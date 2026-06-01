@@ -1,4 +1,4 @@
-**#Úroveň nynějsí implementace**
+# Úroveň nynějsí implementace
 
 | Dopravní systém | Polohy | Detaily vozidel | Směr | Jízdní řády | Trasy | Zastávky | Odjezdy ze zastávek |
 | :--- | :---: | :---: | :---: | :---: | :---: | :---: | :---: |
@@ -25,7 +25,7 @@
 | DPMLB | [ ] | [ ] | [ ] | [ ] | [ ] | [ ] | [ ] |
 | Kladno | [ ] | [ ] | [ ] | [ ] | [ ] | [ ] | [ ] |
 
-**#Zdroje aktuálních poloh**  
+# Zdroje aktuálních poloh
 https://grapp.spravazeleznic.cz/  
 https://www.mpvnet.cz/pid/map  
 https://provoz.kr-ustecky.cz/TMD  
@@ -49,7 +49,7 @@ https://hb-mhd-bridge-1.onrender.com/hb.geojson
 https://preparator.eternal.cz/services/mboleslav/bus_positions?guid=146  
 https://www.arriva.cz/cs/dopravni-info/aktualni-poloha-autobusu-online?mainType=MHD  
   
-**#Chybějící zdroje**  
+# Chybějící zdroje
 IDOK  
 Olomouc  
 Třebíč  
