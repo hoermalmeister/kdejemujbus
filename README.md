@@ -53,14 +53,14 @@ https://www.arriva.cz/cs/dopravni-info/aktualni-poloha-autobusu-online?mainType=
 IDOK  
 Olomouc  
 Třebíč  
-Ústí nad Orlicí
-Špindlerův Mlýn
-jičín
-Tachov
-Železná Ruda
-Žatec
-Louny
-Lovosice
-Litoměřice
-Kadaň
-Duchcov
+Ústí nad Orlicí  
+Špindlerův Mlýn  
+Jičín  
+Tachov  
+Železná Ruda  
+Žatec  
+Louny  
+Lovosice  
+Litoměřice  
+Kadaň  
+Duchcov  
