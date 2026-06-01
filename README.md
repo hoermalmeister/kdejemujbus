@@ -1,6 +1,6 @@
 **#Úroveň nynějsí implementace**
 
-**| Dopravní systém | Polohy | Detaily vozidel | Směr vozidla | Jízdní řády | Trasy | Zastávky | Odjezdy ze zastávek |**
+| Dopravní systém | Polohy | Detaily vozidel | Směr | Jízdní řády | Trasy | Zastávky | Odjezdy ze zastávek |
 | :--- | :---: | :---: | :---: | :---: | :---: | :---: | :---: |
 | GRAPP | [ ] | [ ] | [ ] | [ ] | [ ] | [ ] | [ ] |
 | PID | [ ] | [ ] | [ ] | [ ] | [ ] | [ ] | [ ] |
