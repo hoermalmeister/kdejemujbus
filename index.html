@@ -4,16 +4,21 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>KdeJeMujBus - WebGL Mapa</title>
+    
+    <script src="https://unpkg.com/maplibre-gl@3.0.0/dist/maplibre-gl.js"></script>
+    <link href="https://unpkg.com/maplibre-gl@3.0.0/dist/maplibre-gl.css" rel="stylesheet" />
+    
+    <script src="https://unpkg.com/deck.gl@latest/dist.min.js"></script>
+
     <style>
-        body { margin: 0; padding: 0; font-family: sans-serif; }
-        #map { width: 100vw; height: 100vh; background: #222; }
-        #status { position: absolute; top: 10px; left: 10px; background: rgba(0,0,0,0.8); color: white; padding: 10px; border-radius: 5px; z-index: 10; }
+        body { margin: 0; padding: 0; font-family: sans-serif; overflow: hidden; }
+        #map { position: absolute; top: 0; left: 0; width: 100vw; height: 100vh; background: #222; }
+        #status { position: absolute; top: 20px; left: 20px; background: rgba(0,0,0,0.8); color: white; padding: 12px; border-radius: 8px; z-index: 10; box-shadow: 0 4px 6px rgba(0,0,0,0.3); }
     </style>
 </head>
 <body>
-    <div id="status">Načítám data...</div>
-    <div id="map">
-        </div>
+    <div id="status">Načítám data z GRAPPu...</div>
+    <div id="map"></div>
 
     <script type="module" src="./js/app.js"></script>
 </body>
