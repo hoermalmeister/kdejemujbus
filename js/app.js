@@ -1,95 +1,86 @@
 import Deduplicator from './Deduplicator.js';
 import GrappProvider from './providers/GrappProvider.js';
+// Později přidáš: import PidProvider from './providers/PidProvider.js';
 
+// Inicializace mapy přesně jako v tvém VDV projektu
+const map = new maplibregl.Map({
+    container: 'map',
+    style: {
+        version: 8,
+        sources: { 
+            'carto-dark': { 
+                type: 'raster', 
+                tiles: ['https://a.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}.png'], 
+                tileSize: 256 
+            } 
+        },
+        layers: [{ id: 'carto-dark-layer', type: 'raster', source: 'carto-dark' }]
+    },
+    center: [15.6, 49.4], // Střed ČR
+    zoom: 7,
+    maxZoom: 19
+});
+
+// Založíme si naše "nástroje"
 const deduplicator = new Deduplicator();
 const providers = [
     new GrappProvider()
 ];
 
-const statusDiv = document.getElementById('status');
+// Po načtení mapy přidáme prázdnou vrstvu pro vozidla
+map.on('load', () => {
+    map.addSource('vehicles', { 
+        type: 'geojson', 
+        data: { type: 'FeatureCollection', features: [] } 
+    });
 
-// --- INICIALIZACE MAPY (Deck.gl + MapLibre) ---
-// Používáme globální objekt 'deck' z HTML skriptu
-const { DeckGL, ScatterplotLayer } = deck;
+    // Zde bys použil své dynamické ikonky jako ve VDV (getVehicleIcon)
+    map.addLayer({ 
+        id: 'vehicles-layer', 
+        type: 'circle', // Pro test zatím použijeme kolečka, později si nasadíš své symboly
+        source: 'vehicles', 
+        paint: { 
+            'circle-radius': 6, 
+            'circle-color': '#ff4d4d',
+            'circle-stroke-color': '#fff',
+            'circle-stroke-width': 2
+        } 
+    });
 
-const map = new DeckGL({
-    container: 'map',
-    initialViewState: {
-        longitude: 15.4730, // Střed ČR
-        latitude: 49.8175,
-        zoom: 7,
-        pitch: 0,
-        bearing: 0
-    },
-    controller: true,
-    // Veřejná Carto podkladová mapa (tmavý režim)
-    mapStyle: 'https://basemaps.cartocdn.com/gl/dark-matter-gl-style/style.json',
-    layers: [] // Sem budeme cpát data
+    // Spustíme nekonečnou smyčku
+    updateData();
+    setInterval(updateData, 15000);
 });
 
-// --- FUNKCE PRO VYKRESLENÍ ---
-function renderMap(dataForMap) {
-    // Vytvoříme novou WebGL vrstvu s našimi spoji
-    const vehicleLayer = new ScatterplotLayer({
-        id: 'vehicles-layer',
-        data: dataForMap,
-        pickable: true,
-        opacity: 0.8,
-        stroked: true,
-        filled: true,
-        radiusScale: 6,
-        radiusMinPixels: 4,
-        radiusMaxPixels: 15,
-        lineWidthMinPixels: 1,
-        // Kde se má bod vykreslit (deck.gl bere [lon, lat])
-        getPosition: d => [d.lon, d.lat],
-        // Barva bodu (RGBA) - dáme jim pěknou červenou
-        getFillColor: d => [255, 50, 50, 200],
-        getLineColor: d => [255, 255, 255],
-        // Tooltip při najetí myší
-        onClick: (info) => {
-            if(info.object) {
-                alert(`Spoj: ${info.object.headsign}\nZdroj: ${info.object.provider}`);
-            }
+// Tímto nahrazujeme tvou původní obří funkci fetchLiveVehicles()
+async function updateData() {
+    // 1. Řekneme všem 20 providerům: "Stáhněte si svá data nezávisle na sobě"
+    const fetchPromises = providers.map(p => p.fetchData());
+    const results = await Promise.allSettled(fetchPromises);
+    
+    let allVehicles = [];
+    
+    // 2. Sesypeme všechno do jedné hromady
+    results.forEach((result) => {
+        if (result.status === 'fulfilled') {
+            allVehicles = allVehicles.concat(result.value);
         }
     });
 
-    // Aktualizujeme mapu s novou vrstvou
-    map.setProps({
-        layers: [vehicleLayer]
-    });
+    // 3. Necháme chytrý deduplikátor vyházet duplicity a seřadit priority
+    deduplicator.processData(allVehicles);
+    const cleanData = deduplicator.getCleanData();
+
+    // 4. Připravíme GeoJSON pro MapLibre (přesně jak jsi zvyklý)
+    const features = cleanData.map(v => ({
+        type: 'Feature',
+        geometry: { type: 'Point', coordinates: [v.lon, v.lat] },
+        properties: v // Tady v.headsign, v.provider, v.delay atd.
+    }));
+
+    // 5. Překreslíme mapu
+    map.getSource('vehicles').setData({ type: 'FeatureCollection', features });
+    
+    // Zde bys např. updatoval UI čítač spojů
+    console.log(`Vykresleno spojů: ${features.length}`);
 }
-
-// --- HLAVNÍ SMYČKA ---
-async function updateData() {
-    try {
-        // Asynchronní stažení dat
-        const fetchPromises = providers.map(p => p.fetchData());
-        const results = await Promise.allSettled(fetchPromises);
-        
-        let allVehicles = [];
-        
-        results.forEach((result) => {
-            if (result.status === 'fulfilled') {
-                allVehicles = allVehicles.concat(result.value);
-            }
-        });
-
-        // Deduplikace a vyčištění
-        deduplicator.processData(allVehicles);
-        const finalData = deduplicator.getCleanData();
-
-        statusDiv.innerText = `Spojů na mapě: ${finalData.length}\nZdroj: GRAPP (CORS Proxy)`;
-        
-        // Zavoláme WebGL vykreslení!
-        renderMap(finalData);
-
-    } catch (err) {
-        console.error("Kritická chyba v hlavní smyčce:", err);
-        statusDiv.innerText = "Chyba při načítání dat. Zkontroluj F12 Console.";
-    }
-}
-
-// Spustíme hned a opakujeme každých 15 vteřin
-updateData();
-setInterval(updateData, 15000);
