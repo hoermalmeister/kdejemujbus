@@ -5,7 +5,7 @@ export default class GrappProvider extends BaseProvider {
         super();
         this.providerName = 'GRAPP';
         // URL tvého Render můstku
-        this.apiUrl = 'https://TVE-NOVE-URL.onrender.com/grapp'; 
+        this.apiUrl = 'https://grapp-bridge.onrender.com/grapp'; 
         this.currentToken = ''; // Sem si uložíme token pro detaily
     }
 
