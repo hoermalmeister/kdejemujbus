@@ -8,6 +8,16 @@ const providers = [
 
 const statusDiv = document.getElementById('status');
 
+// Prvky našeho nového bočního/spodního panelu
+const detailPanel = document.getElementById('detail-panel');
+const panelTitle = document.getElementById('panel-title');
+const panelBody = document.getElementById('panel-body');
+const panelClose = document.getElementById('panel-close');
+
+// Do této proměnné si schováme stažená data o aktuálně otevřeném vlaku,
+// abychom mezi detaily a jízdním řádem mohli přepínat okamžitě bez načítání
+let activeTrainData = { props: null, details: null, timetable: null };
+
 // --- INICIALIZACE MAPY ---
 const map = new maplibregl.Map({
     container: 'map',
@@ -103,30 +113,29 @@ map.on('load', () => {
         layout: { 'icon-image': ['get', 'iconId'], 'icon-allow-overlap': true, 'icon-ignore-placement': true }
     });
 
-    // --- KLIKNUTÍ NA VOZIDLO ---
+    // --- KLIKNUTÍ NA VOZIDLO (ZOBRAZENÍ PANELU) ---
     map.on('click', 'vehicles-layer', async (e) => {
         const feature = e.features[0];
         const props = feature.properties; 
 
-        if (window.currentPopup) window.currentPopup.remove();
+        // Reset předchozí volby trasy
         map.getSource('selected-route').setData({ type: 'Feature', geometry: { type: 'LineString', coordinates: [] } });
 
-        window.currentPopup = new maplibregl.Popup({ closeButton: true })
-            .setLngLat(feature.geometry.coordinates)
-            .setHTML(`<div style="padding: 15px; font-family: sans-serif;">Stahuji detaily...</div>`)
-            .addTo(map);
-
-        window.currentPopup.on('close', () => {
-            map.getSource('selected-route').setData({ type: 'Feature', geometry: { type: 'LineString', coordinates: [] } });
-        });
+        // Otevřeme panel a dáme do něj loading stav
+        panelTitle.innerText = "Načítám...";
+        panelBody.innerHTML = `<div style="text-align:center; padding:20px; color:#7f8c8d;">Stahuji podrobné informace o spoji...</div>`;
+        detailPanel.style.display = "flex";
+        setTimeout(() => detailPanel.classList.add('open'), 10); // Spustí plynulý výjezd na mobilu
 
         const providerObj = providers.find(p => p.providerName === props.provider);
         if (providerObj) {
+            // Paralelně stáhneme základní detaily i souřadnice trasy
             const [details, routeCoordinates] = await Promise.all([
                 providerObj.getDetails ? providerObj.getDetails(props.id) : null,
                 providerObj.getRouteInfo ? providerObj.getRouteInfo(props.id) : null
             ]);
             
+            // Pokud trasa existuje, hned ji vykreslíme
             if (routeCoordinates && routeCoordinates.length > 0) {
                 map.getSource('selected-route').setData({
                     type: 'Feature',
@@ -135,68 +144,25 @@ map.on('load', () => {
             }
 
             if (details) {
-                window.currentPopup.setHTML(`
-                    <div style="font-family: sans-serif; min-width: 240px; max-height: 380px; display: flex; flex-direction: column;">
-                        <h3 style="margin: 0 0 10px 0; border-bottom: 2px solid ${props.provider === 'GRAPP' ? '#800000' : '#2C89C8'}; padding-bottom: 5px;">
-                            ${details.route}
-                        </h3>
-                        <table style="width: 100%; text-align: left; font-size: 13px; border-collapse: collapse; margin-bottom: 10px;">
-                            <tr><th style="padding: 4px 0; width: 40%;">Směr:</th><td>${details.destination}</td></tr>
-                            <tr><th style="padding: 4px 0;">Zastávka:</th><td>${details.stop}</td></tr>
-                            <tr><th style="padding: 4px 0;">Zpoždění:</th><td><strong style="color: #e67e22;">${details.delay}</strong></td></tr>
-                            <tr><th style="padding: 4px 0;">Dopravce:</th><td>${details.carrier}</td></tr>
-                        </table>
-                        
-                        <button id="btn-timetable" data-id="${props.id}" style="width: 100%; padding: 8px; background: #333; color: white; border: none; border-radius: 4px; cursor: pointer; font-weight: bold; font-size: 12px; margin-bottom: 5px;">
-                            Jízdní řád
-                        </button>
-
-                        <div id="timetable-container" style="display: none; max-height: 180px; overflow-y: auto; margin-top: 10px; border-top: 1px solid #ccc; padding-top: 10px;">
-                        </div>
-                    </div>
-                `);
-
-                // Navážeme událost kliknutí na nově vytvořené tlačítko
-                document.getElementById('btn-timetable').addEventListener('click', async (btnEvent) => {
-                    const button = btnEvent.target;
-                    const trainId = button.getAttribute('data-id');
-                    const container = document.getElementById('timetable-container');
-
-                    // Pokud už je otevřený, zavřeme ho
-                    if (container.style.display === 'block') {
-                        container.style.display = 'none';
-                        button.innerText = 'Jízdní řád';
-                        return;
-                    }
-
-                    button.innerText = 'Načítám...';
-                    button.disabled = true;
-
-                    const timetableData = await providerObj.getTimetable(trainId);
-                    
-                    if (timetableData && timetableData.length > 0) {
-                        let htmlRows = timetableData.map(stop => `
-                            <div style="display: flex; justify-content: space-between; font-size: 11px; padding: 4px 0; border-bottom: 1px dashed #eee;">
-                                <span style="font-weight: 500; max-width: 65%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${stop.station}</span>
-                                <span style="color: #555; font-family: monospace;">${stop.time}</span>
-                            </div>
-                        `).join('');
-
-                        container.innerHTML = htmlRows;
-                        container.style.display = 'block';
-                        button.innerText = 'Skrýt jízdní řád';
-                    } else {
-                        container.innerHTML = '<div style="font-size: 12px; color: red; text-align: center;">Jízdní řád není dostupný</div>';
-                        container.style.display = 'block';
-                        button.innerText = 'Jízdní řád';
-                    }
-                    button.disabled = false;
-                });
-
+                // Uložíme si kompletní sadu dat do globální paměti pro přepínání oken
+                activeTrainData = { props: props, details: details, timetable: null };
+                renderDetailView(); // Vykreslíme základní pohled s detaily
             } else {
-                window.currentPopup.setHTML(`<div style="padding: 15px; font-family: sans-serif; color: red;">Chyba při načítání detailů.</div>`);
+                panelTitle.innerText = "Chyba";
+                panelBody.innerHTML = `<div style="color:red; text-align:center; padding:20px;">Informace o spoji se nepodařilo stáhnout.</div>`;
             }
         }
+    });
+
+    // Zavření panelu křížkem (schová panel a smaže čáru z mapy)
+    panelClose.addEventListener('click', closeDetailPanel);
+    
+    // Kliknutí do prázdného místa v mapě panel také zavře
+    map.on('click', (e) => {
+        if (e.defaultPrevented) return;
+        // Pokud uživatel klikl na prázdnou mapu (mimo vlak), panel zavřeme
+        const features = map.queryRenderedFeatures(e.point, { layers: ['vehicles-layer'] });
+        if (features.length === 0) closeDetailPanel();
     });
 
     map.on('mouseenter', 'vehicles-layer', () => map.getCanvas().style.cursor = 'pointer');
@@ -205,6 +171,76 @@ map.on('load', () => {
     updateData();
     setInterval(updateData, 15000);
 });
+
+// --- POHLED 1: VYKRESLENÍ DETAILŮ O VOZIDLE ---
+function renderDetailView() {
+    const d = activeTrainData.details;
+    const p = activeTrainData.props;
+
+    panelTitle.innerText = d.route;
+    
+    panelBody.innerHTML = `
+        <table class="detail-table">
+            <tr><th>Směr</th><td>${d.destination}</td></tr>
+            <tr><th>Aktuální stanice</th><td>${d.stop}</td></tr>
+            <tr><th>Zpoždění</th><td><span style="color:#e67e22; font-weight:700;">${d.delay}</span></td></tr>
+            <tr><th>Dopravce</th><td>${d.carrier}</td></tr>
+        </table>
+        <button id="show-timetable-btn" class="panel-btn panel-btn-primary">
+            📋 Zobrazit jízdní řád
+        </button>
+    `;
+
+    // Navázání události na tlačítko "Zobrazit jízdní řád"
+    document.getElementById('show-timetable-btn').addEventListener('click', switchToTimetable);
+}
+
+// --- POHLED 2: PŘEPNUTÍ A VYKRESLENÍ JÍZDNÍHO ŘÁDU ---
+async function switchToTimetable() {
+    panelBody.innerHTML = `<div style="text-align:center; padding:20px; color:#7f8c8d;">Stahuji kompletní jízdní řád...</div>`;
+    
+    const p = activeTrainData.props;
+    const providerObj = providers.find(prov => prov.providerName === p.provider);
+
+    // Pokud ještě nemáme jízdní řád stažený v paměti, stáhneme ho teď
+    if (!activeTrainData.timetable && providerObj && providerObj.getTimetable) {
+        activeTrainData.timetable = await providerObj.getTimetable(p.id);
+    }
+
+    // Vytvoříme záhlaví s tlačítkem Zpět
+    panelTitle.innerText = "Jízdní řád";
+    
+    let htmlContent = `
+        <button id="back-to-details-btn" class="panel-btn panel-btn-secondary" style="margin-bottom: 15px;">
+            ← Zpět na informace o spoji
+        </button>
+    `;
+
+    if (activeTrainData.timetable && activeTrainData.timetable.length > 0) {
+        htmlContent += '<div class="timetable-list">';
+        htmlContent += activeTrainData.timetable.map(stop => `
+            <div class="timetable-item">
+                <span class="timetable-station">${stop.station}</span>
+                <span class="timetable-time">${stop.time}</span>
+            </div>
+        `).join('');
+        htmlContent += '</div>';
+    } else {
+        htmlContent += `<div style="color:red; text-align:center; padding:20px;">Jízdní řád se nepodařilo načíst.</div>`;
+    }
+
+    panelBody.innerHTML = htmlContent;
+
+    // Navázání tlačítka Zpět, které bez načítání okamžitě vrátí vizitku detailů
+    document.getElementById('back-to-details-btn').addEventListener('click', renderDetailView);
+}
+
+// --- FUNKCE PRO ZAVŘENÍ PANELU ---
+function closeDetailPanel() {
+    detailPanel.classList.remove('open');
+    setTimeout(() => { detailPanel.style.display = "none"; }, 300); // Počká na dojezd animace na mobilu
+    map.getSource('selected-route').setData({ type: 'Feature', geometry: { type: 'LineString', coordinates: [] } });
+}
 
 // --- HLAVNÍ DATOVÁ SMYČKA ---
 async function updateData() {
@@ -234,7 +270,7 @@ async function updateData() {
         map.getSource('vehicles').setData({ type: 'FeatureCollection', features });
         statusDiv.innerText = `Spojů na mapě: ${features.length}`;
     } catch (err) {
-        console.error("Kritická chyba ve smyčce:", err);
+        console.error("Kritická chyba:", err);
         statusDiv.innerText = "Chyba při načítání dat.";
     }
 }
