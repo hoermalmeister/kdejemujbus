@@ -30,37 +30,46 @@ const map = new maplibregl.Map({
 
 // --- FUNKCE PRO GENEROVÁNÍ SVG UKAZATELŮ ---
 
-// 1. Ukazatel se směrem (Trojúhelník)
+// 1. Ukazatel se směrem (Trojúhelník) - ZVĚTŠENÝ
 function createTriangleIcon(map, id, fillColor) {
     if (map.hasImage(id)) return;
-    const size = 30; 
+    
+    // Zvětšili jsme plátno, aby se do něj vešel větší tvar
+    const size = 40; 
     const canvas = document.createElement('canvas');
     canvas.width = size * 2; canvas.height = size * 2;
     const ctx = canvas.getContext('2d');
     
-    ctx.scale(2, 2); 
-    // Posun těžiště SVG do přesného středu Canvasu (15, 15)
-    ctx.translate(15 - 11, 15 - 15.5);
+    ctx.scale(2, 2); // Optimalizace pro jemné Retina displeje
+    
+    // Posuneme se do naprostého středu plátna
+    ctx.translate(20, 20);
+    // Zvětšíme samotnou grafiku o 30 %
+    ctx.scale(1.3, 1.3);
+    // Vycentrujeme SVG (těžiště tvé šipky je X:11, Y:15.5)
+    ctx.translate(-11, -15.5);
 
     const path = new Path2D("M 10.97,2.31 C 10.97,2.31 2.03,23.03 2.03,23.03 2.03,23.03 11.00,20.94 11.00,20.94 11.00,20.94 20.00,23.00 20.00,23.00 20.00,23.00 10.97,2.31 10.97,2.31 Z");
     ctx.fillStyle = fillColor;
-    ctx.fill();
+    
+    // ZDE BYLA CHYBA: Chybělo slovo 'path', proto se šipky nevybarvovaly!
+    ctx.fill(path); 
 
     map.addImage(id, ctx.getImageData(0, 0, size * 2, size * 2), { pixelRatio: 2 });
 }
 
-// 2. Ukazatel bez směru (Kruh)
+// 2. Ukazatel bez směru (Kruh) - ZVĚTŠENÝ
 function createCircleIcon(map, id, fillColor) {
     if (map.hasImage(id)) return;
-    const size = 30;
+    const size = 40;
     const canvas = document.createElement('canvas');
     canvas.width = size * 2; canvas.height = size * 2;
     const ctx = canvas.getContext('2d');
     
     ctx.scale(2, 2);
     ctx.beginPath();
-    // Nakreslíme přesně vycentrovaný kruh o poloměru 8.5px
-    ctx.arc(15, 15, 8.5, 0, 2 * Math.PI);
+    // Střed přesně na 20, 20, a větší poloměr (11), aby seděl k větším šipkám
+    ctx.arc(20, 20, 11, 0, 2 * Math.PI);
     ctx.fillStyle = fillColor;
     ctx.fill();
 
@@ -69,12 +78,12 @@ function createCircleIcon(map, id, fillColor) {
 
 // --- PO NAČTENÍ MAPY ---
 map.on('load', () => {
-    // Generování šipek pro spoje se známým směrem
+    // Generování šipek 
     createTriangleIcon(map, 'triangle-grapp', '#800000'); 
     createTriangleIcon(map, 'triangle-pid', '#2C89C8');   
     createTriangleIcon(map, 'triangle-unknown', '#7f8c8d'); 
 
-    // Generování kruhů pro spoje s neznámým směrem (stojící/bez dat)
+    // Generování kruhů 
     createCircleIcon(map, 'circle-grapp', '#800000'); 
     createCircleIcon(map, 'circle-pid', '#2C89C8');   
     createCircleIcon(map, 'circle-unknown', '#7f8c8d'); 
@@ -84,51 +93,39 @@ map.on('load', () => {
         data: { type: 'FeatureCollection', features: [] } 
     });
 
-    // VRSTVA 1: POUZE IKONY (Vykreslí se jako první vespod)
+    // JEDNA SPOLEČNÁ VRSTVA PRO VŠE - Ikona a Text jsou jeden nedělitelný objekt!
     map.addLayer({ 
-        id: 'vehicles-icon-layer', 
+        id: 'vehicles-layer', 
         type: 'symbol',
         source: 'vehicles', 
         layout: { 
+            // --- IKONA ---
             'icon-image': ['get', 'iconId'], 
             'icon-rotate': ['coalesce', ['get', 'heading'], 0], 
             'icon-rotation-alignment': 'map', 
-            'icon-allow-overlap': true, // Ikony se mohou přes sebe překrývat
-            'icon-ignore-placement': true
-        }
-    });
+            // Důležité: Ikony se mohou překrývat (nikdy nezmizí)
+            'icon-allow-overlap': true, 
+            'icon-ignore-placement': true,
 
-    // VRSTVA 2: POUZE TEXTY (Vykreslí se absolutně nahoře nad všemi ikonami)
-    map.addLayer({ 
-        id: 'vehicles-text-layer', 
-        type: 'symbol',
-        source: 'vehicles', 
-        layout: { 
+            // --- TEXT ---
             'text-field': ['get', 'route'], 
-            'text-size': 9, // Odpovídá tvému 6px-7px požadavku
+            'text-size': 11, 
             'text-rotation-alignment': 'viewport',
-            
-            // INTELIGENTNÍ CHOVÁNÍ TEXTU
-            'text-allow-overlap': false, // Dva texty se nesmí přes sebe překrýt
-            // Pokud se mají texty překrýt, zkusí uskočit z prostředka na okraj
-            'text-variable-anchor': ['center', 'top', 'bottom', 'left', 'right'], 
-            'text-radial-offset': 1.0, // Vzdálenost uskoku textu (1.0 = šířka jednoho písmena)
-            'text-justify': 'center'
+            // Důležité: Texty se mohou překrývat (nikdy nezmizí nezávisle na ikoně)
+            'text-allow-overlap': true, 
+            'text-ignore-placement': true
         },
         paint: {
             'text-color': '#FFFFFF',
+            // Zvětšený stín plně nahrazuje 'bold' font, zajistí perfektní čitelnost i přes sebe
             'text-halo-color': 'rgba(0,0,0,0.85)', 
-            'text-halo-width': 1.5 // Tučný stín supluje 'bold' font
+            'text-halo-width': 1.5 
         } 
     });
 
-    // Interakce myši aplikujeme na obě vrstvy
-    const changeCursor = () => map.getCanvas().style.cursor = 'pointer';
-    const resetCursor = () => map.getCanvas().style.cursor = '';
-    map.on('mouseenter', 'vehicles-icon-layer', changeCursor);
-    map.on('mouseleave', 'vehicles-icon-layer', resetCursor);
-    map.on('mouseenter', 'vehicles-text-layer', changeCursor);
-    map.on('mouseleave', 'vehicles-text-layer', resetCursor);
+    // Interakce myši
+    map.on('mouseenter', 'vehicles-layer', () => map.getCanvas().style.cursor = 'pointer');
+    map.on('mouseleave', 'vehicles-layer', () => map.getCanvas().style.cursor = '');
 
     updateData();
     setInterval(updateData, 15000);
@@ -160,7 +157,7 @@ async function updateData() {
                 if (v.provider === 'GRAPP') sourceBase = 'grapp';
                 if (v.provider === 'PID') sourceBase = 'pid';
 
-                // Zjistíme, zda máme platný směr a vybereme typ tvaru
+                // Rozhodneme, zda použít šipku (má úhel) nebo kroužek (stojí/nevíme úhel)
                 const hasHeading = v.heading !== null && v.heading !== undefined;
                 const shapeType = hasHeading ? 'triangle' : 'circle';
 
@@ -169,7 +166,7 @@ async function updateData() {
                     geometry: { type: 'Point', coordinates: [v.lon, v.lat] },
                     properties: {
                         ...v,
-                        // Výsledné ID ikony (např. 'triangle-grapp' nebo 'circle-pid')
+                        // Např. 'triangle-grapp' nebo 'circle-pid'
                         iconId: `${shapeType}-${sourceBase}` 
                     }
                 };
