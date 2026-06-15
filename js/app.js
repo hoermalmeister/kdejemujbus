@@ -1,11 +1,9 @@
 import Deduplicator from './Deduplicator.js';
 import GrappProvider from './providers/GrappProvider.js';
 
-// Inicializace našich tříd
 const deduplicator = new Deduplicator();
 const providers = [
     new GrappProvider()
-    // Později sem jednoduše přidáš např. new PidProvider()
 ];
 
 const statusDiv = document.getElementById('status');
@@ -15,7 +13,6 @@ const map = new maplibregl.Map({
     container: 'map',
     style: {
         version: 8,
-        // Říká mapě, odkud má stahovat písmo pro čísla spojů (vyřeší chybu s fonty)
         glyphs: "https://demotiles.maplibre.org/font/{fontstack}/{range}.pbf", 
         sources: { 
             'carto-dark': { 
@@ -26,87 +23,113 @@ const map = new maplibregl.Map({
         },
         layers: [{ id: 'carto-dark-layer', type: 'raster', source: 'carto-dark' }]
     },
-    center: [15.4730, 49.8175], // Střed ČR
+    center: [15.4730, 49.8175], 
     zoom: 7,
     maxZoom: 19
 });
 
 // --- FUNKCE PRO GENEROVÁNÍ SVG UKAZATELŮ ---
+
+// 1. Ukazatel se směrem (Trojúhelník)
 function createTriangleIcon(map, id, fillColor) {
     if (map.hasImage(id)) return;
-    
-    // Plátno lehce zvětšíme na 30x30, abychom měli prostor pro posun těžiště
     const size = 30; 
     const canvas = document.createElement('canvas');
-    canvas.width = size * 2; 
-    canvas.height = size * 2;
+    canvas.width = size * 2; canvas.height = size * 2;
     const ctx = canvas.getContext('2d');
     
     ctx.scale(2, 2); 
-    
-    // Fyzika těžiště tvého trojúhelníku:
-    // Osa X je přesně uprostřed (11)
-    // Osa Y (těžiště) leží zhruba v 1/3 od základny (cca na hodnotě 15.5)
-    // Střed našeho plátna je 15. Posuneme tedy kresbu tak, aby bod (11, 15.5) ležel přesně na (15, 15)
+    // Posun těžiště SVG do přesného středu Canvasu (15, 15)
     ctx.translate(15 - 11, 15 - 15.5);
 
-    // Využití tvé SVG cesty pro ukazatel
     const path = new Path2D("M 10.97,2.31 C 10.97,2.31 2.03,23.03 2.03,23.03 2.03,23.03 11.00,20.94 11.00,20.94 11.00,20.94 20.00,23.00 20.00,23.00 20.00,23.00 10.97,2.31 10.97,2.31 Z");
-    
     ctx.fillStyle = fillColor;
-    ctx.fill(path); // Kreslíme už jen čistou výplň bez okrajů
+    ctx.fill();
+
+    map.addImage(id, ctx.getImageData(0, 0, size * 2, size * 2), { pixelRatio: 2 });
+}
+
+// 2. Ukazatel bez směru (Kruh)
+function createCircleIcon(map, id, fillColor) {
+    if (map.hasImage(id)) return;
+    const size = 30;
+    const canvas = document.createElement('canvas');
+    canvas.width = size * 2; canvas.height = size * 2;
+    const ctx = canvas.getContext('2d');
+    
+    ctx.scale(2, 2);
+    ctx.beginPath();
+    // Nakreslíme přesně vycentrovaný kruh o poloměru 8.5px
+    ctx.arc(15, 15, 8.5, 0, 2 * Math.PI);
+    ctx.fillStyle = fillColor;
+    ctx.fill();
 
     map.addImage(id, ctx.getImageData(0, 0, size * 2, size * 2), { pixelRatio: 2 });
 }
 
 // --- PO NAČTENÍ MAPY ---
 map.on('load', () => {
-    // 1. Vygenerujeme si ikony pro různé dopravce (čisté výplně)
-    createTriangleIcon(map, 'triangle-grapp', '#800000'); // Tmavě červená SŽ
-    createTriangleIcon(map, 'triangle-pid', '#2C89C8');   // Modrá PID
-    createTriangleIcon(map, 'triangle-unknown', '#7f8c8d'); // Šedá (ostatní)
+    // Generování šipek pro spoje se známým směrem
+    createTriangleIcon(map, 'triangle-grapp', '#800000'); 
+    createTriangleIcon(map, 'triangle-pid', '#2C89C8');   
+    createTriangleIcon(map, 'triangle-unknown', '#7f8c8d'); 
 
-    // 2. Přidáme datový zdroj pro vozidla
+    // Generování kruhů pro spoje s neznámým směrem (stojící/bez dat)
+    createCircleIcon(map, 'circle-grapp', '#800000'); 
+    createCircleIcon(map, 'circle-pid', '#2C89C8');   
+    createCircleIcon(map, 'circle-unknown', '#7f8c8d'); 
+
     map.addSource('vehicles', { 
         type: 'geojson', 
         data: { type: 'FeatureCollection', features: [] } 
     });
 
-    // 3. Hlavní vrstva (kombinuje Ikonu a Text)
+    // VRSTVA 1: POUZE IKONY (Vykreslí se jako první vespod)
     map.addLayer({ 
-        id: 'vehicles-layer', 
+        id: 'vehicles-icon-layer', 
         type: 'symbol',
         source: 'vehicles', 
         layout: { 
-            // Vykreslení ikony
             'icon-image': ['get', 'iconId'], 
-            'icon-rotate': ['coalesce', ['get', 'heading'], 0], // Rotace podle azimutu
-            'icon-rotation-alignment': 'map', // Rotuje společně s mapou vůči severu
-            'icon-allow-overlap': true,
-            'icon-ignore-placement': true,
+            'icon-rotate': ['coalesce', ['get', 'heading'], 0], 
+            'icon-rotation-alignment': 'map', 
+            'icon-allow-overlap': true, // Ikony se mohou přes sebe překrývat
+            'icon-ignore-placement': true
+        }
+    });
 
-            // Vykreslení textu (číslo vlaku/linky) přesně do vycentrovaného těžiště
+    // VRSTVA 2: POUZE TEXTY (Vykreslí se absolutně nahoře nad všemi ikonami)
+    map.addLayer({ 
+        id: 'vehicles-text-layer', 
+        type: 'symbol',
+        source: 'vehicles', 
+        layout: { 
             'text-field': ['get', 'route'], 
-            // text-font jsme smazali, aby se použil bezpečný default a nepadalo to na 404
-            'text-size': 11, // Písmo lehce zvětšené
-            'text-allow-overlap': true,
-            'text-ignore-placement': true,
-            'text-rotation-alignment': 'viewport' // Text je vždy čitelný vodorovně
-            // text-offset jsme smazali, střed Canvasu je teď dokonalý
+            'text-size': 9, // Odpovídá tvému 6px-7px požadavku
+            'text-rotation-alignment': 'viewport',
+            
+            // INTELIGENTNÍ CHOVÁNÍ TEXTU
+            'text-allow-overlap': false, // Dva texty se nesmí přes sebe překrýt
+            // Pokud se mají texty překrýt, zkusí uskočit z prostředka na okraj
+            'text-variable-anchor': ['center', 'top', 'bottom', 'left', 'right'], 
+            'text-radial-offset': 1.0, // Vzdálenost uskoku textu (1.0 = šířka jednoho písmena)
+            'text-justify': 'center'
         },
         paint: {
             'text-color': '#FFFFFF',
-            // Ztmavíme stín a uděláme ho tlustší, což vytvoří iluzi krásně tučného a čitelného písma
-            'text-halo-color': 'rgba(0,0,0,0.8)', 
-            'text-halo-width': 1.5 
+            'text-halo-color': 'rgba(0,0,0,0.85)', 
+            'text-halo-width': 1.5 // Tučný stín supluje 'bold' font
         } 
     });
 
-    // Přidáme kurzor ručičky při najetí na spoj
-    map.on('mouseenter', 'vehicles-layer', () => map.getCanvas().style.cursor = 'pointer');
-    map.on('mouseleave', 'vehicles-layer', () => map.getCanvas().style.cursor = '');
+    // Interakce myši aplikujeme na obě vrstvy
+    const changeCursor = () => map.getCanvas().style.cursor = 'pointer';
+    const resetCursor = () => map.getCanvas().style.cursor = '';
+    map.on('mouseenter', 'vehicles-icon-layer', changeCursor);
+    map.on('mouseleave', 'vehicles-icon-layer', resetCursor);
+    map.on('mouseenter', 'vehicles-text-layer', changeCursor);
+    map.on('mouseleave', 'vehicles-text-layer', resetCursor);
 
-    // Spuštění datové smyčky
     updateData();
     setInterval(updateData, 15000);
 });
@@ -116,7 +139,6 @@ async function updateData() {
     try {
         statusDiv.innerText = 'Aktualizuji data...';
 
-        // 1. Asynchronně stáhneme data ze všech zdrojů najednou
         const fetchPromises = providers.map(p => p.fetchData());
         const results = await Promise.allSettled(fetchPromises);
         
@@ -127,31 +149,32 @@ async function updateData() {
             }
         });
 
-        // 2. Provedeme deduplikaci a setřídění priorit
         deduplicator.processData(allVehicles);
         const cleanData = deduplicator.getCleanData();
 
-        // 3. Převod na formát GeoJSON a přiřazení barvy ikony
         const features = cleanData
-            // Tady filtrujeme vlaky, které ještě nemají chycenou GPS (předejde havárii mapy)
             .filter(v => v.lat !== undefined && v.lon !== undefined && v.lat !== null && v.lon !== null)
             .map(v => {
-                // Dynamické přiřazení ikony podle zdroje
-                let assignedIcon = 'triangle-unknown';
-                if (v.provider === 'GRAPP') assignedIcon = 'triangle-grapp';
-                if (v.provider === 'PID') assignedIcon = 'triangle-pid';
+                // Zjistíme zdroj pro barvu
+                let sourceBase = 'unknown';
+                if (v.provider === 'GRAPP') sourceBase = 'grapp';
+                if (v.provider === 'PID') sourceBase = 'pid';
+
+                // Zjistíme, zda máme platný směr a vybereme typ tvaru
+                const hasHeading = v.heading !== null && v.heading !== undefined;
+                const shapeType = hasHeading ? 'triangle' : 'circle';
 
                 return {
                     type: 'Feature',
                     geometry: { type: 'Point', coordinates: [v.lon, v.lat] },
                     properties: {
                         ...v,
-                        iconId: assignedIcon // Předáme ID grafiky mapě
+                        // Výsledné ID ikony (např. 'triangle-grapp' nebo 'circle-pid')
+                        iconId: `${shapeType}-${sourceBase}` 
                     }
                 };
             });
 
-        // 4. Překreslení mapy
         map.getSource('vehicles').setData({ type: 'FeatureCollection', features });
         
         statusDiv.innerText = `Spojů na mapě: ${features.length}`;
