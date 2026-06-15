@@ -15,7 +15,7 @@ const map = new maplibregl.Map({
     container: 'map',
     style: {
         version: 8,
-        // TUTO ŘÁDKU JSME PŘIDALI: Říká mapě, odkud má stahovat písmo pro čísla spojů
+        // Říká mapě, odkud má stahovat písmo pro čísla spojů (vyřeší chybu s fonty)
         glyphs: "https://demotiles.maplibre.org/font/{fontstack}/{range}.pbf", 
         sources: { 
             'carto-dark': { 
@@ -32,39 +32,39 @@ const map = new maplibregl.Map({
 });
 
 // --- FUNKCE PRO GENEROVÁNÍ SVG UKAZATELŮ ---
-function createTriangleIcon(map, id, fillColor, strokeColor) {
+function createTriangleIcon(map, id, fillColor) {
     if (map.hasImage(id)) return;
     
-    const size = 26; 
+    // Plátno lehce zvětšíme na 30x30, abychom měli prostor pro posun těžiště
+    const size = 30; 
     const canvas = document.createElement('canvas');
     canvas.width = size * 2; 
     canvas.height = size * 2;
     const ctx = canvas.getContext('2d');
     
-    // Scale pro ostřejší zobrazení (Retina displeje)
     ctx.scale(2, 2); 
     
-    // Vycentrování těžiště rotace
-    ctx.translate(size/2 - 11, size/2 - 12.65);
+    // Fyzika těžiště tvého trojúhelníku:
+    // Osa X je přesně uprostřed (11)
+    // Osa Y (těžiště) leží zhruba v 1/3 od základny (cca na hodnotě 15.5)
+    // Střed našeho plátna je 15. Posuneme tedy kresbu tak, aby bod (11, 15.5) ležel přesně na (15, 15)
+    ctx.translate(15 - 11, 15 - 15.5);
 
     // Využití tvé SVG cesty pro ukazatel
     const path = new Path2D("M 10.97,2.31 C 10.97,2.31 2.03,23.03 2.03,23.03 2.03,23.03 11.00,20.94 11.00,20.94 11.00,20.94 20.00,23.00 20.00,23.00 20.00,23.00 10.97,2.31 10.97,2.31 Z");
     
     ctx.fillStyle = fillColor;
-    ctx.fill(path);
-    ctx.lineWidth = 1;
-    ctx.strokeStyle = strokeColor;
-    ctx.stroke(path);
+    ctx.fill(path); // Kreslíme už jen čistou výplň bez okrajů
 
     map.addImage(id, ctx.getImageData(0, 0, size * 2, size * 2), { pixelRatio: 2 });
 }
 
 // --- PO NAČTENÍ MAPY ---
 map.on('load', () => {
-    // 1. Vygenerujeme si ikony pro různé dopravce
-    createTriangleIcon(map, 'triangle-grapp', '#800000', '#E0E0E0'); // Tmavě červená SŽ
-    createTriangleIcon(map, 'triangle-pid', '#2C89C8', '#E0E0E0');   // Modrá PID
-    createTriangleIcon(map, 'triangle-unknown', '#7f8c8d', '#E0E0E0'); // Šedá (ostatní)
+    // 1. Vygenerujeme si ikony pro různé dopravce (čisté výplně)
+    createTriangleIcon(map, 'triangle-grapp', '#800000'); // Tmavě červená SŽ
+    createTriangleIcon(map, 'triangle-pid', '#2C89C8');   // Modrá PID
+    createTriangleIcon(map, 'triangle-unknown', '#7f8c8d'); // Šedá (ostatní)
 
     // 2. Přidáme datový zdroj pro vozidla
     map.addSource('vehicles', { 
@@ -78,25 +78,27 @@ map.on('load', () => {
         type: 'symbol',
         source: 'vehicles', 
         layout: { 
-            // Vykreslení ikony trojúhelníku
+            // Vykreslení ikony
             'icon-image': ['get', 'iconId'], 
             'icon-rotate': ['coalesce', ['get', 'heading'], 0], // Rotace podle azimutu
             'icon-rotation-alignment': 'map', // Rotuje společně s mapou vůči severu
             'icon-allow-overlap': true,
             'icon-ignore-placement': true,
 
-            // Vykreslení textu (číslo vlaku/linky) přes ikonu
+            // Vykreslení textu (číslo vlaku/linky) přesně do vycentrovaného těžiště
             'text-field': ['get', 'route'], 
-            'text-size': 9,
+            // text-font jsme smazali, aby se použil bezpečný default a nepadalo to na 404
+            'text-size': 11, // Písmo lehce zvětšené
             'text-allow-overlap': true,
             'text-ignore-placement': true,
-            'text-rotation-alignment': 'viewport', // Text je vždy čitelný (nerotuje)
-            'text-offset': [0, 0.15] // Lehký posun do těžiště trojúhelníku
+            'text-rotation-alignment': 'viewport' // Text je vždy čitelný vodorovně
+            // text-offset jsme smazali, střed Canvasu je teď dokonalý
         },
         paint: {
             'text-color': '#FFFFFF',
-            'text-halo-color': 'rgba(0,0,0,0.4)', // Jemný stín pro lepší čitelnost
-            'text-halo-width': 1
+            // Ztmavíme stín a uděláme ho tlustší, což vytvoří iluzi krásně tučného a čitelného písma
+            'text-halo-color': 'rgba(0,0,0,0.8)', 
+            'text-halo-width': 1.5 
         } 
     });
 
@@ -130,21 +132,24 @@ async function updateData() {
         const cleanData = deduplicator.getCleanData();
 
         // 3. Převod na formát GeoJSON a přiřazení barvy ikony
-        const features = cleanData.map(v => {
-            // Dynamické přiřazení ikony podle zdroje
-            let assignedIcon = 'triangle-unknown';
-            if (v.provider === 'GRAPP') assignedIcon = 'triangle-grapp';
-            if (v.provider === 'PID') assignedIcon = 'triangle-pid';
+        const features = cleanData
+            // Tady filtrujeme vlaky, které ještě nemají chycenou GPS (předejde havárii mapy)
+            .filter(v => v.lat !== undefined && v.lon !== undefined && v.lat !== null && v.lon !== null)
+            .map(v => {
+                // Dynamické přiřazení ikony podle zdroje
+                let assignedIcon = 'triangle-unknown';
+                if (v.provider === 'GRAPP') assignedIcon = 'triangle-grapp';
+                if (v.provider === 'PID') assignedIcon = 'triangle-pid';
 
-            return {
-                type: 'Feature',
-                geometry: { type: 'Point', coordinates: [v.lon, v.lat] },
-                properties: {
-                    ...v,
-                    iconId: assignedIcon // Předáme ID grafiky mapě
-                }
-            };
-        });
+                return {
+                    type: 'Feature',
+                    geometry: { type: 'Point', coordinates: [v.lon, v.lat] },
+                    properties: {
+                        ...v,
+                        iconId: assignedIcon // Předáme ID grafiky mapě
+                    }
+                };
+            });
 
         // 4. Překreslení mapy
         map.getSource('vehicles').setData({ type: 'FeatureCollection', features });
