@@ -15,6 +15,8 @@ const map = new maplibregl.Map({
     container: 'map',
     style: {
         version: 8,
+        // TUTO ŘÁDKU JSME PŘIDALI: Říká mapě, odkud má stahovat písmo pro čísla spojů
+        glyphs: "https://demotiles.maplibre.org/font/{fontstack}/{range}.pbf", 
         sources: { 
             'carto-dark': { 
                 type: 'raster', 
