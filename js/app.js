@@ -114,7 +114,49 @@ map.on('load', () => {
     updateData();
     setInterval(updateData, 15000);
 });
+// --- KLIKNUTÍ NA SPOJ (ZOBRAZENÍ TABULKY) ---
+    map.on('click', 'vehicles-layer', async (e) => {
+        const feature = e.features[0];
+        const props = feature.properties; // Obsahuje data z našeho provideru (lon, lat, id, provider...)
 
+        // Zavřeme předchozí okno, pokud existuje
+        if (window.currentPopup) window.currentPopup.remove();
+
+        // 1. Zobrazíme načítací okénko okamžitě (než server SŽ odpoví)
+        window.currentPopup = new maplibregl.Popup({ closeButton: true })
+            .setLngLat(feature.geometry.coordinates)
+            .setHTML(`<div style="padding: 15px; font-family: sans-serif;">Stahuji detaily ze SŽ...</div>`)
+            .addTo(map);
+
+        // 2. Najdeme správný zdroj dat a vyžádáme si detaily
+        const providerObj = providers.find(p => p.providerName === props.provider);
+        if (providerObj && providerObj.getDetails) {
+            
+            const details = await providerObj.getDetails(props.id);
+            
+            // 3. Po stažení přepíšeme HTML v popupu na úhlednou tabulku!
+            if (details) {
+                window.currentPopup.setHTML(`
+                    <div style="font-family: sans-serif; min-width: 220px;">
+                        <h3 style="margin: 0 0 10px 0; border-bottom: 2px solid ${props.provider === 'GRAPP' ? '#800000' : '#2C89C8'}; padding-bottom: 5px;">
+                            ${details.route}
+                        </h3>
+                        <table style="width: 100%; text-align: left; font-size: 13px; border-collapse: collapse;">
+                            <tr><th style="padding: 4px 0; width: 40%;">Směr:</th><td>${details.destination}</td></tr>
+                            <tr><th style="padding: 4px 0;">Zastávka:</th><td>${details.stop}</td></tr>
+                            <tr><th style="padding: 4px 0;">Zpoždění:</th><td><strong style="color: #e67e22;">${details.delay}</strong></td></tr>
+                            <tr><th style="padding: 4px 0;">Dopravce:</th><td>${details.carrier}</td></tr>
+                        </table>
+                        <button style="margin-top: 15px; width: 100%; padding: 8px; background: #333; color: white; border: none; border-radius: 4px; cursor: pointer; font-weight: bold;">
+                            Jízdní řád
+                        </button>
+                    </div>
+                `);
+            } else {
+                window.currentPopup.setHTML(`<div style="padding: 15px; font-family: sans-serif; color: red;">Chyba při načítání detailů.</div>`);
+            }
+        }
+    });
 // --- HLAVNÍ DATOVÁ SMYČKA ---
 async function updateData() {
     try {
