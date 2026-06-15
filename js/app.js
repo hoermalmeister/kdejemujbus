@@ -87,7 +87,6 @@ map.on('load', () => {
 
             // Vykreslení textu (číslo vlaku/linky) přes ikonu
             'text-field': ['get', 'route'], 
-            'text-font': ['Open Sans Bold', 'Arial Unicode MS Bold'], 
             'text-size': 9,
             'text-allow-overlap': true,
             'text-ignore-placement': true,
