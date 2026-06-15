@@ -1,14 +1,16 @@
 import Deduplicator from './Deduplicator.js';
 import GrappProvider from './providers/GrappProvider.js';
 
+// Inicializace našich tříd
 const deduplicator = new Deduplicator();
 const providers = [
     new GrappProvider()
+    // Později sem jednoduše přidáš např. new PidProvider()
 ];
 
 const statusDiv = document.getElementById('status');
 
-// Inicializace MapLibre mapy
+// --- INICIALIZACE MAPY (MapLibre) ---
 const map = new maplibregl.Map({
     container: 'map',
     style: {
@@ -27,33 +29,91 @@ const map = new maplibregl.Map({
     maxZoom: 19
 });
 
+// --- FUNKCE PRO GENEROVÁNÍ SVG UKAZATELŮ ---
+function createTriangleIcon(map, id, fillColor, strokeColor) {
+    if (map.hasImage(id)) return;
+    
+    const size = 26; 
+    const canvas = document.createElement('canvas');
+    canvas.width = size * 2; 
+    canvas.height = size * 2;
+    const ctx = canvas.getContext('2d');
+    
+    // Scale pro ostřejší zobrazení (Retina displeje)
+    ctx.scale(2, 2); 
+    
+    // Vycentrování těžiště rotace
+    ctx.translate(size/2 - 11, size/2 - 12.65);
+
+    // Využití tvé SVG cesty pro ukazatel
+    const path = new Path2D("M 10.97,2.31 C 10.97,2.31 2.03,23.03 2.03,23.03 2.03,23.03 11.00,20.94 11.00,20.94 11.00,20.94 20.00,23.00 20.00,23.00 20.00,23.00 10.97,2.31 10.97,2.31 Z");
+    
+    ctx.fillStyle = fillColor;
+    ctx.fill(path);
+    ctx.lineWidth = 1;
+    ctx.strokeStyle = strokeColor;
+    ctx.stroke(path);
+
+    map.addImage(id, ctx.getImageData(0, 0, size * 2, size * 2), { pixelRatio: 2 });
+}
+
+// --- PO NAČTENÍ MAPY ---
 map.on('load', () => {
-    // Zdroj dat pro spoje
+    // 1. Vygenerujeme si ikony pro různé dopravce
+    createTriangleIcon(map, 'triangle-grapp', '#800000', '#E0E0E0'); // Tmavě červená SŽ
+    createTriangleIcon(map, 'triangle-pid', '#2C89C8', '#E0E0E0');   // Modrá PID
+    createTriangleIcon(map, 'triangle-unknown', '#7f8c8d', '#E0E0E0'); // Šedá (ostatní)
+
+    // 2. Přidáme datový zdroj pro vozidla
     map.addSource('vehicles', { 
         type: 'geojson', 
         data: { type: 'FeatureCollection', features: [] } 
     });
 
-    // Vykreslovací vrstva (zatím jednoduché červené body, později přidáš své ikonky z VDV)
+    // 3. Hlavní vrstva (kombinuje Ikonu a Text)
     map.addLayer({ 
         id: 'vehicles-layer', 
-        type: 'circle',
+        type: 'symbol',
         source: 'vehicles', 
-        paint: { 
-            'circle-radius': 6, 
-            'circle-color': '#ff4d4d',
-            'circle-stroke-color': '#fff',
-            'circle-stroke-width': 2
+        layout: { 
+            // Vykreslení ikony trojúhelníku
+            'icon-image': ['get', 'iconId'], 
+            'icon-rotate': ['coalesce', ['get', 'heading'], 0], // Rotace podle azimutu
+            'icon-rotation-alignment': 'map', // Rotuje společně s mapou vůči severu
+            'icon-allow-overlap': true,
+            'icon-ignore-placement': true,
+
+            // Vykreslení textu (číslo vlaku/linky) přes ikonu
+            'text-field': ['get', 'route'], 
+            'text-font': ['Open Sans Bold', 'Arial Unicode MS Bold'], 
+            'text-size': 9,
+            'text-allow-overlap': true,
+            'text-ignore-placement': true,
+            'text-rotation-alignment': 'viewport', // Text je vždy čitelný (nerotuje)
+            'text-offset': [0, 0.15] // Lehký posun do těžiště trojúhelníku
+        },
+        paint: {
+            'text-color': '#FFFFFF',
+            'text-halo-color': 'rgba(0,0,0,0.4)', // Jemný stín pro lepší čitelnost
+            'text-halo-width': 1
         } 
     });
 
-    // Spustíme stahování dat
+    // Přidáme kurzor ručičky při najetí na spoj
+    map.on('mouseenter', 'vehicles-layer', () => map.getCanvas().style.cursor = 'pointer');
+    map.on('mouseleave', 'vehicles-layer', () => map.getCanvas().style.cursor = '');
+
+    // Spuštění datové smyčky
     updateData();
     setInterval(updateData, 15000);
 });
 
+// --- HLAVNÍ DATOVÁ SMYČKA ---
 async function updateData() {
     try {
+        statusDiv.innerText = 'Aktualizuji data...';
+
+        // 1. Asynchronně stáhneme data ze všech zdrojů najednou
         const fetchPromises = providers.map(p => p.fetchData());
         const results = await Promise.allSettled(fetchPromises);
         
@@ -64,22 +124,34 @@ async function updateData() {
             }
         });
 
+        // 2. Provedeme deduplikaci a setřídění priorit
         deduplicator.processData(allVehicles);
         const cleanData = deduplicator.getCleanData();
 
-        // Převod našich dat na formát GeoJSON pro MapLibre
-        const features = cleanData.map(v => ({
-            type: 'Feature',
-            geometry: { type: 'Point', coordinates: [v.lon, v.lat] },
-            properties: v
-        }));
+        // 3. Převod na formát GeoJSON a přiřazení barvy ikony
+        const features = cleanData.map(v => {
+            // Dynamické přiřazení ikony podle zdroje
+            let assignedIcon = 'triangle-unknown';
+            if (v.provider === 'GRAPP') assignedIcon = 'triangle-grapp';
+            if (v.provider === 'PID') assignedIcon = 'triangle-pid';
 
-        // Aktualizace dat v mapě
+            return {
+                type: 'Feature',
+                geometry: { type: 'Point', coordinates: [v.lon, v.lat] },
+                properties: {
+                    ...v,
+                    iconId: assignedIcon // Předáme ID grafiky mapě
+                }
+            };
+        });
+
+        // 4. Překreslení mapy
         map.getSource('vehicles').setData({ type: 'FeatureCollection', features });
         
         statusDiv.innerText = `Spojů na mapě: ${features.length}`;
+
     } catch (err) {
-        console.error("Chyba:", err);
+        console.error("Kritická chyba ve smyčce:", err);
         statusDiv.innerText = "Chyba při načítání dat.";
     }
 }
