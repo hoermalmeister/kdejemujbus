@@ -77,6 +77,37 @@ export default class GrappProvider extends BaseProvider {
         }
     }
 
+    // --- NOVÁ FUNKCE PRO ZÍSKÁNÍ TRASY ---
+    async getRouteInfo(globalId) {
+        const trainId = globalId.replace('grapp_', '');
+        // Voláme tvůj Render backend
+        const url = `https://grapp-bridge.onrender.com/grapp/route?id=${trainId}&token=${this.currentToken}&session=${this.currentSession}`;
+        
+        try {
+            const response = await fetch(url);
+            const data = await response.json();
+
+            if (!data || data.Status !== "OK") return null;
+
+            // Spojíme projetou (Confirmed) i plánovanou (InPlan) část dohromady
+            let allPoints = [];
+            if (data.Confirmed1) allPoints = allPoints.concat(data.Confirmed1);
+            if (data.InPlan1) allPoints = allPoints.concat(data.InPlan1);
+            if (data.Confirmed2) allPoints = allPoints.concat(data.Confirmed2);
+            if (data.InPlan2) allPoints = allPoints.concat(data.InPlan2);
+
+            if (allPoints.length === 0) return null;
+
+            // Převedeme [Lat, Lon] z GRAPPu na [Lon, Lat] pro MapLibre LineString
+            const coordinates = allPoints.map(point => [point[1], point[0]]);
+
+            return coordinates;
+        } catch (error) {
+            console.error("Chyba při stahování trasy:", error);
+            return null;
+        }
+    }
+
     normalize(rawData) {
         if (!rawData || !rawData.Trains) return [];
 
