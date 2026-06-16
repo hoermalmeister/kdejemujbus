@@ -1,153 +1,69 @@
-/* --- MODERNÍ DETAILNÍ PANEL / BOTTOM SHEET --- */
+/* --- TLAČÍTKO LOKACE --- */
+#locate-btn {
+    position: absolute; right: 20px; bottom: 30px; z-index: 1000;
+    background: rgba(20, 20, 20, 0.85); backdrop-filter: blur(8px);
+    color: #58d68d; border: 1px solid rgba(255,255,255,0.15);
+    border-radius: 50%; width: 44px; height: 44px; cursor: pointer;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.5); display: flex;
+    align-items: center; justify-content: center; transition: all 0.2s ease;
+    font-size: 20px;
+}
+#locate-btn:hover { background: rgba(40, 40, 40, 0.9); }
+#locate-btn:active { transform: scale(0.95); }
+
+/* --- MODERNÍ DETAILNÍ PANEL --- */
 #detail-panel {
-    position: absolute;
-    top: 20px;
-    left: 20px;
-    width: 320px;
+    position: absolute; top: 20px; left: 20px; width: 320px;
     max-height: calc(100vh - 80px);
-    background: #ffffff;
-    border-radius: 12px;
-    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);
-    z-index: 10;
-    display: none; /* Výchozí stav - skrytý */
-    flex-direction: column;
-    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-    color: #2c3e50;
-    overflow: hidden;
-    transition: transform 0.3s ease-out;
+    background: rgba(20, 20, 20, 0.95);
+    backdrop-filter: blur(10px);
+    border: 1px solid rgba(255,255,255,0.15);
+    border-radius: 12px; box-shadow: 0 8px 24px rgba(0,0,0,0.8);
+    z-index: 1000; display: none; flex-direction: column;
+    font-family: 'Open Sans', Arial, sans-serif;
+    color: #fff; overflow: hidden; transition: transform 0.3s ease-out;
 }
-
 .panel-header {
-    padding: 16px;
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    border-bottom: 1px solid #eee;
+    padding: 15px; display: flex; justify-content: space-between;
+    align-items: center; border-bottom: 1px solid #333;
 }
+.panel-header h3 { margin: 0; font-size: 18px; font-weight: bold; }
+.panel-close-btn { background: none; border: none; font-size: 24px; cursor: pointer; color: #aaa; padding: 0; line-height: 1; }
+.panel-close-btn:hover { color: #fff; }
+.panel-content { padding: 15px; overflow-y: auto; flex-grow: 1; }
 
-.panel-header h3 {
-    margin: 0;
-    font-size: 18px;
-    font-weight: 700;
-}
-
-.panel-close-btn {
-    background: none;
-    border: none;
-    font-size: 22px;
-    cursor: pointer;
-    color: #95a5a6;
-    padding: 0;
-    line-height: 1;
-}
-
-.panel-close-btn:hover { color: #2c3e50; }
-
-.panel-content {
-    padding: 16px;
-    overflow-y: auto;
-    flex-grow: 1;
-}
-
-/* Moderní tabulka detailů */
-.detail-table {
-    width: 100%;
-    border-collapse: collapse;
-    margin-bottom: 20px;
-}
-.detail-table th {
-    padding: 8px 0;
-    color: #7f8c8d;
-    font-weight: 500;
-    font-size: 13px;
-    text-align: left;
-    width: 35%;
-}
-.detail-table td {
-    padding: 8px 0;
-    font-size: 14px;
-    font-weight: 600;
-}
+/* Tabulky VDV styl */
+.vdv-table { width: 100%; border-collapse: collapse; margin-bottom: 15px; font-size: 13px; }
+.vdv-table th, .vdv-table td { padding: 8px; border-bottom: 1px solid #333; text-align: left; }
+.vdv-table th { color: #aaa; font-weight: normal; width: 40%; white-space: nowrap; }
+.vdv-table td { color: #fff; font-weight: bold; }
 
 /* Tlačítka */
 .panel-btn {
-    width: 100%;
-    padding: 12px;
-    border: none;
-    border-radius: 8px;
-    font-weight: 700;
-    font-size: 14px;
-    cursor: pointer;
-    transition: background 0.2s;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    gap: 8px;
+    width: 100%; padding: 10px 16px; border: none; border-radius: 6px;
+    font-weight: bold; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 8px; transition: 0.2s;
 }
-.panel-btn-primary { background: #2c3e50; color: #fff; }
-.panel-btn-primary:hover { background: #1a252f; }
-.panel-btn-secondary { background: #f8f9fa; color: #2c3e50; border: 1px solid #dee2e6; }
-.panel-btn-secondary:hover { background: #e2e6ea; }
+.panel-btn-primary { background: #58d68d; color: #111; }
+.panel-btn-primary:hover { background: #45b373; }
+.panel-btn-secondary { background: transparent; color: #fff; border: 1px solid #58d68d; }
+.panel-btn-secondary:hover { background: rgba(88, 214, 141, 0.1); }
 
-/* Jízdní řád - design */
-.timetable-list {
-    display: flex;
-    flex-direction: column;
-}
-.timetable-item {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    padding: 12px 0;
-    border-bottom: 1px solid #f1f3f5;
-}
-.timetable-station {
-    font-size: 13px;
-    font-weight: 600;
-    max-width: 50%;
-    line-height: 1.2;
-}
-.timetable-times-container {
-    display: flex;
-    gap: 15px;
-    text-align: right;
-}
-.timetable-time-block {
-    display: flex;
-    flex-direction: column;
-    width: 45px;
-}
-.time-label {
-    font-size: 9px;
-    color: #95a5a6;
-    text-transform: uppercase;
-    margin-bottom: 2px;
-}
-.time-actual {
-    font-size: 13px;
-    font-weight: 700;
-    font-family: monospace;
-}
-.time-planned {
-    font-size: 11px;
-    color: #7f8c8d;
-    font-family: monospace;
-    text-decoration: line-through; /* Přeškrtnutý plánovaný čas pro lepší čitelnost */
-}
+/* Jízdní řád */
+.timetable-list { display: flex; flex-direction: column; }
+.timetable-item { display: flex; justify-content: space-between; align-items: center; padding: 12px 0; border-bottom: 1px solid #333; }
+.timetable-station { font-size: 13px; font-weight: bold; max-width: 50%; color: #fff; line-height: 1.2; }
+.timetable-times-container { display: flex; gap: 15px; text-align: right; }
+.timetable-time-block { display: flex; flex-direction: column; width: 45px; }
+.time-label { font-size: 9px; color: #aaa; text-transform: uppercase; margin-bottom: 2px; }
+.time-actual { font-size: 13px; font-weight: bold; font-family: monospace; }
+.time-planned { font-size: 11px; color: #666; font-family: monospace; text-decoration: line-through; }
 
-/* --- RESPONZIVITA: MOBILNÍ BOTTOM SHEET --- */
+/* RESPONZIVITA (Spodní lišta na mobilu) */
 @media (max-width: 767px) {
     #detail-panel {
-        top: auto;
-        left: 0;
-        bottom: 0;
-        width: 100%;
-        max-height: 60vh; /* Vyjede max do 60% obrazovky */
-        border-radius: 16px 16px 0 0; /* Zaoblené jen horní rohy */
-        box-shadow: 0 -4px 20px rgba(0, 0, 0, 0.15);
-        transform: translateY(100%); /* Výchozí animace schování */
+        top: auto; left: 0; bottom: 0; width: 100%; max-height: 60vh;
+        border-radius: 16px 16px 0 0; border-bottom: none; border-left: none; border-right: none;
+        transform: translateY(100%);
     }
-    #detail-panel.open {
-        transform: translateY(0);
-    }
+    #detail-panel.open { transform: translateY(0); }
 }
