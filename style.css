@@ -98,22 +98,41 @@
     display: flex;
     justify-content: space-between;
     align-items: center;
-    padding: 10px 0;
+    padding: 12px 0;
     border-bottom: 1px solid #f1f3f5;
 }
 .timetable-station {
     font-size: 13px;
     font-weight: 600;
-    max-width: 60%;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
+    max-width: 50%;
+    line-height: 1.2;
 }
-.timetable-time {
-    font-size: 12px;
-    font-family: monospace;
-    color: #495057;
+.timetable-times-container {
+    display: flex;
+    gap: 15px;
     text-align: right;
+}
+.timetable-time-block {
+    display: flex;
+    flex-direction: column;
+    width: 45px;
+}
+.time-label {
+    font-size: 9px;
+    color: #95a5a6;
+    text-transform: uppercase;
+    margin-bottom: 2px;
+}
+.time-actual {
+    font-size: 13px;
+    font-weight: 700;
+    font-family: monospace;
+}
+.time-planned {
+    font-size: 11px;
+    color: #7f8c8d;
+    font-family: monospace;
+    text-decoration: line-through; /* Přeškrtnutý plánovaný čas pro lepší čitelnost */
 }
 
 /* --- RESPONZIVITA: MOBILNÍ BOTTOM SHEET --- */
