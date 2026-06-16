@@ -6,7 +6,7 @@ export default class GrappProvider extends BaseProvider {
         this.providerName = 'GRAPP';
         this.apiUrl = 'https://grapp-bridge.onrender.com/grapp'; 
         this.detailUrl = 'https://grapp-bridge.onrender.com/grapp/detail'; 
-        this.timetableUrl = 'https://grapp-bridge.onrender.com/grapp/timetable'; // NOVÉ
+        this.timetableUrl = 'https://grapp-bridge.onrender.com/grapp/timetable';
         
         this.currentToken = ''; 
         this.currentSession = ''; 
@@ -53,10 +53,13 @@ export default class GrappProvider extends BaseProvider {
             const destination = findValueByLabel('cílová stanice') || '?';
             const stop = findValueByLabel('potvrzená stanice') || '?';
 
+            // ZJIŠTĚNÍ NÁHRADNÍ DOPRAVY
+            const isNAD = !!doc.querySelector('.standbyTitle');
+
             let delay = findValueByLabel('předpokládané zpoždění');
             if (!delay || delay === '-') delay = findValueByLabel('náskok') || '0 min';
 
-            return { route, destination, stop, delay, carrier };
+            return { route, destination, stop, delay, carrier, isNAD };
         } catch (error) { return null; }
     }
 
@@ -70,14 +73,11 @@ export default class GrappProvider extends BaseProvider {
             let allPoints = [];
             if (data.Confirmed1) allPoints = allPoints.concat(data.Confirmed1);
             if (data.InPlan1) allPoints = allPoints.concat(data.InPlan1);
-            if (data.Confirmed2) allPoints = allPoints.concat(data.Confirmed2);
-            if (data.InPlan2) allPoints = allPoints.concat(data.InPlan2);
             if (allPoints.length === 0) return null;
             return allPoints.map(point => [point[1], point[0]]);
         } catch (error) { return null; }
     }
 
-    // --- NOVÁ FUNKCE PRO JÍZDNÍ ŘÁD ---
     async getTimetable(globalId) {
         const trainId = globalId.replace('grapp_', '');
         const url = `${this.timetableUrl}?id=${trainId}&token=${this.currentToken}&session=${this.currentSession}`;
@@ -89,12 +89,38 @@ export default class GrappProvider extends BaseProvider {
             const parser = new DOMParser();
             const doc = parser.parseFromString(html, 'text/html');
             
-            // Najdeme sekci div class="route" a projdeme její řádky .row
             const stationRows = doc.querySelectorAll('.route .row');
             const stops = [];
 
+            // Pomocná funkce pro určení barvy podle zpoždění
+            const getColorClass = (timeNode) => {
+                if (!timeNode) return '#7f8c8d'; // Default (např. projezdy)
+                const className = timeNode.className || '';
+                if (className.includes('delayTo5_text')) return '#27ae60'; // Zelená (0-5)
+                if (className.includes('delayTo15_text')) return '#e67e22'; // Oranžová (5-15)
+                if (className.includes('delayOver15_text') || className.includes('delayFuture_text')) return '#e74c3c'; // Červená (>15 nebo budoucí neznámé)
+                return '#2c3e50'; // Černá
+            };
+
+            // Pomocná funkce na prořezání duplicit od SŽ
+            const extractTimeBlock = (cells, startIndex) => {
+                const actCell = cells[startIndex];
+                const planCell = cells[startIndex + 1];
+                if (!actCell && !planCell) return null;
+
+                const actNode = actCell?.querySelector('span[class*="delay"]');
+                const planNode = planCell?.querySelector('.timeTT');
+                
+                if (!actNode && !planNode) return null;
+
+                return {
+                    actual: actNode ? actNode.textContent.trim() : '',
+                    planned: planNode ? planNode.textContent.replace(/[()]/g, '').trim() : '',
+                    color: getColorClass(actNode)
+                };
+            };
+
             stationRows.forEach(row => {
-                // Název stanice bývá v prvním sloupci (buď v odkazu 'a' nebo jako text)
                 const firstCol = row.querySelector('div[class*="col-"]');
                 if (!firstCol) return;
                 
@@ -102,20 +128,27 @@ export default class GrappProvider extends BaseProvider {
                 if (!stationName) stationName = firstCol.textContent.replace(/[\n\r]/g, '').replace(/\s+/g, ' ').trim();
                 if (!stationName) return;
 
-                // Najdeme všechny textové elementy obsahující časy v daném řádku
-                const timeElements = Array.from(row.querySelectorAll('.delayTo5_text, .delayFuture_text, .timeTT'));
-                let times = timeElements.map(el => el.textContent.trim());
+                // SŽ má 7 dceřiných divů (col-lg-*). Sloupce 4,5 jsou Příjezd, sloupce 6,7 jsou Odjezd.
+                // Ignorujeme divy s class "hidden-lg" apod., které to duplikují.
+                const desktopCells = Array.from(row.querySelectorAll('div[class*="col-lg-1"]')).filter(el => !el.classList.contains('hidden-lg'));
                 
-                // Vyčistíme duplicity (SŽ dává časy pro mobil i desktop nezávisle do stejného HTML)
-                times = [...new Set(times)].filter(t => t && t !== "•");
+                // Může se stát, že SŽ HTML mírně změní, tohle je robustní obrana
+                let arrival = null;
+                let departure = null;
+                
+                if (desktopCells.length >= 4) {
+                    arrival = extractTimeBlock(desktopCells, 0); // První dvojice (Příjezd)
+                    departure = extractTimeBlock(desktopCells, 2); // Druhá dvojice (Odjezd)
+                }
 
-                // Poskládáme časový řetězec (např. "17:09", nebo "17:17 (17:18)")
-                let timeStr = times.join(' / ');
-                if (!timeStr) timeStr = 'projiždí';
+                // Ošetření první (jen odjezd) a poslední (jen příjezd) stanice
+                if (!arrival && departure) arrival = departure;
+                if (!departure && arrival) departure = arrival;
 
                 stops.push({
                     station: stationName,
-                    time: timeStr
+                    arr: arrival,
+                    dep: departure
                 });
             });
 
