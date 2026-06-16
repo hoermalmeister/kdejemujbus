@@ -140,6 +140,9 @@ function renderDetailView() {
     if (d.isNAD) {
         titleHtml += ` <span style="font-size: 11px; background: #e74c3c; color: white; padding: 2px 6px; border-radius: 4px; margin-left: 8px; vertical-align: middle; font-weight: bold;">Náhradní doprava</span>`;
     }
+    
+    // Zapneme klasickou hlavičku (pro detaily)
+    document.querySelector('.panel-header').style.display = 'flex';
     panelTitle.innerHTML = titleHtml;
     
     panelBody.innerHTML = `
@@ -157,48 +160,64 @@ function renderDetailView() {
     document.getElementById('show-timetable-btn').addEventListener('click', switchToTimetable);
 }
 
-// --- POHLED 2: PŘEPNUTÍ A VYKRESLENÍ JÍZDNÍHO ŘÁDU (VDV Design) ---
+// --- POHLED 2: PŘEPNUTÍ A VYKRESLENÍ JÍZDNÍHO ŘÁDU (Podle obrázku) ---
 async function switchToTimetable() {
     panelBody.innerHTML = `<div style="text-align:center; padding:20px; color:#aaa;">Stahuji jízdní řád...</div>`;
     
     const p = activeTrainData.props;
+    const d = activeTrainData.details;
     const providerObj = providers.find(prov => prov.providerName === p.provider);
 
     if (!activeTrainData.timetable && providerObj && providerObj.getTimetable) {
         activeTrainData.timetable = await providerObj.getTimetable(p.id);
     }
 
-    panelTitle.innerText = "Jízdní řád";
+    // Schováme nativní hlavičku panelu, jízdní řád má vlastní!
+    document.querySelector('.panel-header').style.display = 'none';
     
+    let delayColor = d.delay.includes('náskok') || d.delay === '0 min' ? '#27ae60' : '#e74c3c';
+    if(d.delay.includes('min') && parseInt(d.delay) > 0 && parseInt(d.delay) <= 5) delayColor = '#f39c12';
+
     let htmlContent = `
-        <button id="back-to-details-btn" class="panel-btn panel-btn-secondary" style="margin-bottom: 15px;">
-            ← Zpět na detaily
-        </button>
+        <div class="tt-header">
+            <button id="back-to-details-btn" class="tt-back-btn">Zpět</button>
+            <div class="tt-header-info">
+                Linkospoj: <strong>${d.route}</strong> &nbsp; 
+                Zpoždění: <strong style="color: ${delayColor}">${d.delay === '0 min' ? '0 min' : (d.delay.includes('náskok') ? '-' : '+') + d.delay}</strong>
+            </div>
+        </div>
     `;
 
     if (activeTrainData.timetable && activeTrainData.timetable.length > 0) {
-        htmlContent += '<div class="timetable-list">';
+        htmlContent += `
+            <table class="tt-table">
+                <thead>
+                    <tr>
+                        <th>Zastávka</th>
+                        <th>Příjezd</th>
+                        <th>Odjezd</th>
+                    </tr>
+                </thead>
+                <tbody>
+        `;
+        
         htmlContent += activeTrainData.timetable.map(stop => {
-            const renderTimeBlock = (label, data) => {
-                if (!data || !data.planned) return `<div class="timetable-time-block"></div>`;
+            const renderTime = (data) => {
+                if (!data || !data.planned) return `-`;
                 return `
-                    <div class="timetable-time-block">
-                        <span class="time-label">${label}</span>
-                        <span class="time-actual" style="color: ${data.color};">${data.actual}</span>
-                        ${data.actual !== data.planned ? `<span class="time-planned">${data.planned}</span>` : ''}
-                    </div>
+                    ${data.actual !== data.planned ? `<span class="tt-time-planned">${data.planned}</span>` : ''}
+                    <span class="tt-time-actual" style="color: ${data.color};">${data.actual}</span>
                 `;
             };
             return `
-            <div class="timetable-item">
-                <span class="timetable-station">${stop.station}</span>
-                <div class="timetable-times-container">
-                    ${renderTimeBlock('Příj.', stop.arr)}
-                    ${renderTimeBlock('Odj.', stop.dep)}
-                </div>
-            </div>
+            <tr>
+                <td>${stop.station}</td>
+                <td>${renderTime(stop.arr)}</td>
+                <td>${renderTime(stop.dep)}</td>
+            </tr>
         `}).join('');
-        htmlContent += '</div>';
+        
+        htmlContent += `</tbody></table>`;
     } else {
         htmlContent += `<div style="color:#e74c3c; text-align:center; padding:20px;">Jízdní řád se nepodařilo načíst.</div>`;
     }
@@ -209,7 +228,11 @@ async function switchToTimetable() {
 
 function closeDetailPanel() {
     detailPanel.classList.remove('open');
-    setTimeout(() => { detailPanel.style.display = "none"; }, 300); 
+    setTimeout(() => { 
+        detailPanel.style.display = "none"; 
+        // Při zavření vrátíme nativní hlavičku zpět pro případný příští start
+        document.querySelector('.panel-header').style.display = 'flex'; 
+    }, 300); 
     map.getSource('selected-route').setData({ type: 'Feature', geometry: { type: 'LineString', coordinates: [] } });
 }
 
