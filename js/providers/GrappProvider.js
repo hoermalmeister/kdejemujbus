@@ -7,7 +7,6 @@ export default class GrappProvider extends BaseProvider {
         this.apiUrl = 'https://grapp-bridge.onrender.com/grapp'; 
         this.detailUrl = 'https://grapp-bridge.onrender.com/grapp/detail'; 
         this.timetableUrl = 'https://grapp-bridge.onrender.com/grapp/timetable';
-        
         this.currentToken = ''; 
         this.currentSession = ''; 
     }
@@ -52,8 +51,6 @@ export default class GrappProvider extends BaseProvider {
             const carrier = doc.querySelector('.carrierRestrictionLink')?.textContent.trim() || '?';
             const destination = findValueByLabel('cílová stanice') || '?';
             const stop = findValueByLabel('potvrzená stanice') || '?';
-
-            // ZJIŠTĚNÍ NÁHRADNÍ DOPRAVY
             const isNAD = !!doc.querySelector('.standbyTitle');
 
             let delay = findValueByLabel('předpokládané zpoždění');
@@ -94,17 +91,15 @@ export default class GrappProvider extends BaseProvider {
             const stationRows = doc.querySelectorAll('.route .row');
             const stops = [];
 
-            // Pomocná funkce pro určení barvy podle zpoždění
             const getColorClass = (timeNode) => {
-                if (!timeNode) return '#7f8c8d'; // Default (např. projezdy)
+                if (!timeNode) return '#7f8c8d'; 
                 const className = timeNode.className || '';
-                if (className.includes('delayTo5_text')) return '#27ae60'; // Zelená (0-5)
-                if (className.includes('delayTo15_text')) return '#e67e22'; // Oranžová (5-15)
-                if (className.includes('delayOver15_text') || className.includes('delayFuture_text')) return '#e74c3c'; // Červená (>15 nebo budoucí neznámé)
-                return '#2c3e50'; // Černá
+                if (className.includes('delayTo5_text')) return '#27ae60'; 
+                if (className.includes('delayTo15_text')) return '#f39c12'; 
+                if (className.includes('delayOver15_text') || className.includes('delayFuture_text')) return '#e74c3c'; 
+                return '#fff'; 
             };
 
-            // Pomocná funkce na prořezání duplicit od SŽ
             const extractTimeBlock = (cells, startIndex) => {
                 const actCell = cells[startIndex];
                 const planCell = cells[startIndex + 1];
@@ -122,33 +117,44 @@ export default class GrappProvider extends BaseProvider {
                 };
             };
 
-            stationRows.forEach(row => {
+            stationRows.forEach((row, index) => {
                 const firstCol = row.querySelector('div[class*="col-"]');
                 if (!firstCol) return;
                 
                 let stationName = firstCol.querySelector('a')?.textContent.trim();
                 if (!stationName) stationName = firstCol.textContent.replace(/[\n\r]/g, '').replace(/\s+/g, ' ').trim();
-                if (!stationName) return;
+                
+                // ODSTRANĚNÍ BALASTU ("Informace o vlaku" na konci)
+                if (!stationName || stationName.toLowerCase().includes('informace o')) return;
 
-                // SŽ má 7 dceřiných divů (col-lg-*). Sloupce 4,5 jsou Příjezd, sloupce 6,7 jsou Odjezd.
-                // Ignorujeme divy s class "hidden-lg" apod., které to duplikují.
                 const desktopCells = Array.from(row.querySelectorAll('div[class*="col-lg-1"]')).filter(el => !el.classList.contains('hidden-lg'));
                 
-                // Může se stát, že SŽ HTML mírně změní, tohle je robustní obrana
                 let arrival = null;
                 let departure = null;
                 
-                if (desktopCells.length >= 4) {
-                    arrival = extractTimeBlock(desktopCells, 0); // První dvojice (Příjezd)
-                    departure = extractTimeBlock(desktopCells, 2); // Druhá dvojice (Odjezd)
+                // SŽ často dává první stanici pouze odjezd do sloupců index 2,3 (místo 0,1)
+                // Musíme zjistit, kde ty časy reálně jsou
+                let blockA = extractTimeBlock(desktopCells, 0);
+                let blockB = extractTimeBlock(desktopCells, 2);
+
+                if (index === 0 && !blockA && blockB) {
+                    // První stanice má jen odjezd, příjezd nastavíme stejně, aby nebyla v tabulce díra
+                    arrival = blockB;
+                    departure = blockB;
+                } else if (index === stationRows.length - 1 && blockA && !blockB) {
+                    // Poslední stanice má jen příjezd
+                    arrival = blockA;
+                    departure = blockA;
+                } else {
+                    arrival = blockA;
+                    departure = blockB;
+                    // Fallback
+                    if (!arrival && departure) arrival = departure;
+                    if (!departure && arrival) departure = arrival;
                 }
 
-                // Ošetření první (jen odjezd) a poslední (jen příjezd) stanice
-                if (!arrival && departure) arrival = departure;
-                if (!departure && arrival) departure = arrival;
-
                 stops.push({
-                    station: stationName,
+                    station: stationName.replace(/ z$/, ''), // Odstraní to osamocené " z" (zastávka) na konci názvu, co SŽ někdy vrací
                     arr: arrival,
                     dep: departure
                 });
@@ -183,3 +189,4 @@ export default class GrappProvider extends BaseProvider {
         });
     }
 }
+            
