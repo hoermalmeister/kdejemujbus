@@ -73,6 +73,8 @@ export default class GrappProvider extends BaseProvider {
             let allPoints = [];
             if (data.Confirmed1) allPoints = allPoints.concat(data.Confirmed1);
             if (data.InPlan1) allPoints = allPoints.concat(data.InPlan1);
+            if (data.Confirmed2) allPoints = allPoints.concat(data.Confirmed2);
+            if (data.InPlan2) allPoints = allPoints.concat(data.InPlan2);
             if (allPoints.length === 0) return null;
             return allPoints.map(point => [point[1], point[0]]);
         } catch (error) { return null; }
