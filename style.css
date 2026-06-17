@@ -11,36 +11,36 @@
 #locate-btn:hover { background: rgba(40, 40, 40, 0.9); }
 #locate-btn:active { transform: scale(0.95); }
 
-/* --- MODERNÍ DETAILNÍ PANEL (VDV Dark Mode) --- */
+/* --- MODERNÍ DETAILNÍ PANEL / BOTTOM SHEET (VDV Design) --- */
 #detail-panel {
-    position: absolute; top: 20px; left: 20px; width: 380px; /* ROZŠÍŘENO PRO JŘ */
+    position: absolute; top: 20px; left: 20px; width: 380px; 
     max-height: calc(100vh - 80px);
-    background: rgba(30, 30, 30, 0.95); /* O něco tmavší šedá podle screenshotu */
-    backdrop-filter: blur(10px);
-    border: 1px solid rgba(255,255,255,0.15);
-    border-radius: 12px; box-shadow: 0 8px 24px rgba(0,0,0,0.8);
+    background: #1e1e1e; /* Tmavá ze screenshotu VDV */
+    border: 1px solid rgba(255,255,255,0.1);
+    border-radius: 8px; box-shadow: 0 10px 40px rgba(0,0,0,0.8);
     z-index: 1000; display: none; flex-direction: column;
     font-family: 'Open Sans', Arial, sans-serif;
-    color: #fff; overflow: hidden; transition: transform 0.3s ease-out;
+    color: #eee; overflow: hidden; transition: transform 0.3s ease-out;
 }
 
-/* Hlavička panelu jen pro detaily, v JŘ ji budeme schovávat */
+/* Hlavička pro vizitku vlaku */
 .panel-header {
     padding: 15px; display: flex; justify-content: space-between;
-    align-items: center; border-bottom: 1px solid #444;
+    align-items: center; border-bottom: 1px solid #333;
 }
-.panel-header h3 { margin: 0; font-size: 18px; font-weight: bold; }
+.panel-header h3 { margin: 0; font-size: 18px; font-weight: bold; color: #fff; }
 .panel-close-btn { background: none; border: none; font-size: 24px; cursor: pointer; color: #aaa; padding: 0; line-height: 1; }
 .panel-close-btn:hover { color: #fff; }
+
 .panel-content { padding: 15px; overflow-y: auto; flex-grow: 1; }
 
 /* Tabulky VDV styl (Detaily) */
 .vdv-table { width: 100%; border-collapse: collapse; margin-bottom: 15px; font-size: 13px; }
-.vdv-table th, .vdv-table td { padding: 8px; border-bottom: 1px solid #444; text-align: left; }
+.vdv-table th, .vdv-table td { padding: 8px; border-bottom: 1px solid #333; text-align: left; }
 .vdv-table th { color: #aaa; font-weight: normal; width: 40%; white-space: nowrap; }
 .vdv-table td { color: #fff; font-weight: bold; }
 
-/* Tlačítka VDV styl */
+/* Základní tlačítko */
 .panel-btn {
     width: 100%; padding: 10px 16px; border: none; border-radius: 6px;
     font-weight: bold; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 8px; transition: 0.2s;
@@ -48,42 +48,53 @@
 .panel-btn-primary { background: #58d68d; color: #111; }
 .panel-btn-primary:hover { background: #45b373; }
 
-/* --- NOVÝ JÍZDNÍ ŘÁD --- */
+/* --- NOVÝ JÍZDNÍ ŘÁD (Podle VDV Screenshotu) --- */
 .tt-header {
     display: flex; justify-content: space-between; align-items: center;
-    padding-bottom: 15px; margin-bottom: 10px; border-bottom: 1px solid #444;
+    padding-bottom: 15px; margin-bottom: 15px; border-bottom: 1px solid #333;
 }
 .tt-back-btn {
-    background: #58d68d; color: #111; border: none; padding: 6px 14px;
-    border-radius: 4px; font-weight: bold; font-size: 12px; cursor: pointer;
+    background: #58d68d; color: #111; border: none; padding: 8px 16px;
+    border-radius: 6px; font-weight: bold; font-size: 13px; cursor: pointer;
     transition: 0.2s;
 }
 .tt-back-btn:hover { background: #45b373; }
-.tt-header-info { text-align: right; font-size: 13px; color: #eee; }
-.tt-header-info strong { color: #fff; }
 
-.tt-table { width: 100%; border-collapse: collapse; font-size: 12px; }
+.tt-header-info { text-align: right; font-size: 14px; color: #eee; }
+.tt-header-info strong { color: #fff; }
+.tt-header-info .delay-val { font-weight: bold; }
+
+.tt-table { width: 100%; border-collapse: collapse; font-size: 13px; }
 .tt-table th {
     color: #aaa; font-weight: normal; padding: 0 8px 10px 8px;
-    text-align: right; border-bottom: 1px solid #444;
+    text-align: center; border-bottom: 1px solid #333;
 }
-.tt-table th:first-child { text-align: left; width: 50%; }
+.tt-table th:first-child { text-align: left; width: 45%; }
 .tt-table td {
-    padding: 10px 8px; border-bottom: 1px solid #333;
-    text-align: right; white-space: nowrap;
+    padding: 10px 8px; border-bottom: 1px solid rgba(255,255,255,0.05);
+    text-align: center; white-space: nowrap;
 }
+.tt-table tr:nth-child(even) { background-color: rgba(255,255,255,0.02); }
 .tt-table td:first-child {
-    text-align: left; font-weight: bold; color: #fff; white-space: normal; line-height: 1.2;
+    text-align: left; font-weight: bold; color: #fff; white-space: normal; line-height: 1.3;
 }
 
-.tt-time-planned { color: #777; text-decoration: line-through; margin-right: 4px; font-size: 11px; font-family: monospace; }
-.tt-time-actual { font-weight: bold; font-family: monospace; font-size: 13px; }
+/* Plánovaný a aktuální čas zobrazen vedle sebe přeškrtnutý */
+.tt-time-planned { color: #777; text-decoration: line-through; margin-right: 6px; font-size: 12px; }
+.tt-time-actual { font-weight: bold; font-size: 13px; }
 
-/* RESPONZIVITA (Spodní lišta na mobilu) */
+/* Značka lokální náhradní dopravy (Malá u stanice) */
+.nad-badge {
+    background: #e74c3c; color: white; font-size: 9px; padding: 2px 5px; 
+    border-radius: 4px; margin-left: 6px; vertical-align: middle; font-weight: bold;
+}
+
+/* RESPONZIVITA (Vyjetí ze spodku na mobilu) */
 @media (max-width: 767px) {
     #detail-panel {
-        top: auto; left: 0; bottom: 0; width: 100%; max-height: 70vh;
-        border-radius: 16px 16px 0 0; border-bottom: none; border-left: none; border-right: none;
+        top: auto; left: 0; bottom: 0; width: 100%; max-height: 75vh;
+        border-radius: 16px 16px 0 0; border: none;
+        border-top: 1px solid rgba(255,255,255,0.2);
         transform: translateY(100%);
     }
     #detail-panel.open { transform: translateY(0); }
