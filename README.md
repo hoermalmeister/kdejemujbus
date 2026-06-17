@@ -2,7 +2,7 @@
 
 | Dopravní systém | Polohy | Detaily vozidel | Směr | Jízdní řády | Trasy | Zastávky | Odjezdy ze zastávek |
 | :--- | :---: | :---: | :---: | :---: | :---: | :---: | :---: |
-| GRAPP | [✅] | [✅] | [✅] | [ ] | [✅] | [ ] | [ ] |
+| GRAPP | ✅ | ✅ | ✅ | ✅ | ✅ | [ ] | [ ] |
 | PID | [ ] | [ ] | [ ] | [ ] | [ ] | [ ] | [ ] |
 | DÚK | [ ] | [ ] | [ ] | [ ] | [ ] | [ ] | [ ] |
 | IDOL | [ ] | [ ] | [ ] | [ ] | [ ] | [ ] | [ ] |
