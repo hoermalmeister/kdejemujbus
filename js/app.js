@@ -229,6 +229,8 @@ function renderDetailView() {
 
 // --- POHLED 2: PŘEPNUTÍ A VYKRESLENÍ JÍZDNÍHO ŘÁDU ---
 async function switchToTimetable() {
+    isTimetableOpen = true;
+    updateURL();
     panelBody.innerHTML = `<div style="text-align:center; padding:20px; color:#aaa;">Načítám jízdní řád...</div>`;
     
     const p = activeTrainData.props;
