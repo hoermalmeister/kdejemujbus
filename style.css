@@ -80,13 +80,13 @@
 }
 
 /* Plánovaný a aktuální čas zobrazen vedle sebe přeškrtnutý */
-.tt-time-planned { color: #777; text-decoration: line-through; margin-right: 6px; font-size: 12px; }
-.tt-time-actual { font-weight: bold; font-size: 13px; }
+.tt-time-planned { color: #777; text-decoration: line-through; margin-right: 6px; font-size: 12px; font-family: monospace; }
+.tt-time-planned-nodelay { color: #777; margin-right: 6px; font-size: 12px; font-family: monospace; text-decoration: none; }
+.tt-time-actual { font-weight: bold; font-size: 13px; font-family: monospace; }
 
 /* Značka lokální náhradní dopravy (Malá u stanice) */
-.nad-badge {
-    background: #e74c3c; color: white; font-size: 9px; padding: 2px 5px; 
-    border-radius: 4px; margin-left: 6px; vertical-align: middle; font-weight: bold;
+.nad-icon {
+    font-size: 13px; margin-left: 6px;
 }
 
 /* RESPONZIVITA (Vyjetí ze spodku na mobilu) */
