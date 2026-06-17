@@ -144,13 +144,13 @@ function renderDetailView() {
     document.querySelector('.panel-header').style.display = 'flex';
     panelTitle.innerHTML = titleHtml;
 
-    // Detekce barvy a textu pro NÁSKOK vs ZPOŽDĚNÍ
-    let delayColor = '#58d68d'; // výchozí zelená pro 0 min
+    // BARVY A ZNAMÉNKA PRO ZPOŽDĚNÍ / NÁSKOK
+    let delayColor = '#58d68d'; 
     let delayText = 'Bez zpoždění';
 
     if (d.delay.startsWith('-')) {
-        delayColor = '#bada55'; // Žluto-zelená pro náskok
-        delayText = d.delay;    // Vypíše "-X min"
+        delayColor = '#bada55'; // Náskok (Žluto-zelená)
+        delayText = d.delay;    
     } else if (d.delay !== '0 min') {
         let minVal = parseInt(d.delay);
         if (minVal > 15) delayColor = '#e74c3c';
@@ -187,7 +187,7 @@ async function switchToTimetable() {
 
     document.querySelector('.panel-header').style.display = 'none';
     
-    // Znovu určíme formát zpoždění do hlavičky JŘ
+    // Zpoždění pro hlavičku jízdního řádu
     let delayColor = '#58d68d'; 
     let delayText = '0 min';
 
@@ -226,9 +226,10 @@ async function switchToTimetable() {
         
         htmlContent += activeTrainData.timetable.map(stop => {
             const renderTime = (data) => {
-                if (!data || !data.actual) return `-`;
+                if (!data || !data.actual) return `<span style="color:#444;">-</span>`;
                 let html = '';
                 if (data.planned) {
+                    // Přeškrtne se pouze pokud se aktuální čas liší od plánovaného
                     if (data.actual !== data.planned) {
                         html += `<s class="tt-time-planned">${data.planned}</s> `;
                     } else {
@@ -239,6 +240,7 @@ async function switchToTimetable() {
                 return html;
             };
 
+            // Vložení ikony autobusu u zastávky
             const nadHtml = stop.isNAD ? `<span class="nad-icon" title="Náhradní doprava v tomto úseku">🚌</span>` : '';
 
             return `
