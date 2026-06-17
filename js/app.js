@@ -229,7 +229,6 @@ async function switchToTimetable() {
                 if (!data || !data.actual) return `<span style="color:#444;">-</span>`;
                 let html = '';
                 if (data.planned) {
-                    // Přeškrtne se pouze pokud se aktuální čas liší od plánovaného
                     if (data.actual !== data.planned) {
                         html += `<s class="tt-time-planned">${data.planned}</s> `;
                     } else {
@@ -240,7 +239,6 @@ async function switchToTimetable() {
                 return html;
             };
 
-            // Vložení ikony autobusu u zastávky
             const nadHtml = stop.isNAD ? `<span class="nad-icon" title="Náhradní doprava v tomto úseku">🚌</span>` : '';
 
             return `
