@@ -256,7 +256,6 @@ async function switchToTimetable() {
 
     document.querySelector('.panel-header').style.display = 'none';
 
-    // Překonfigurujeme panelBody tak, aby hlavička JŘ stála na místě a scrolloval se jen vnitřek
     panelBody.style.padding = '0';
     panelBody.style.overflowY = 'hidden';
     panelBody.style.display = 'flex';
@@ -274,7 +273,6 @@ async function switchToTimetable() {
         delayText = '+' + d.delay;
     }
 
-    // HLAVIČKA JÍZDNÍHO ŘÁDU (Statická, nescrolluje)
     let htmlContent = `
         <div class="tt-header" style="padding: 15px; margin: 0; background: #1e1e1e; border-bottom: 1px solid #333; z-index: 20;">
             <button id="back-to-details-btn" class="tt-back-btn">Zpět</button>
@@ -311,13 +309,22 @@ async function switchToTimetable() {
             const nadHtml = stop.isNAD ? `<span class="nad-badge" title="Náhradní doprava v tomto úseku">NAD</span>` : '';
             
             const isCurrentStop = (stop.station.trim() === d.stop.trim());
-            const stationColor = isCurrentStop ? 'color: #e74c3c;' : '';
-            // Pokud je to aktuální zastávka, dáme celému řádku unikátní ID
             const rowId = isCurrentStop ? 'id="current-stop-row"' : '';
+            
+            // LOGIKA PRO STYLOVÁNÍ NÁZVU STANICE
+            let stationStyle = '';
+            if (stop.isPassing) {
+                // Projíždějící stanice: Zrušení boldu (normal), přidání kurzívy a ztmavení textu
+                stationStyle += 'font-weight: normal; font-style: italic; color: #bbb; ';
+            }
+            if (isCurrentStop) {
+                // Aktuální stanice: Pokud je projíždějící, zůstane italic, ale barva se přepíše na červenou
+                stationStyle += 'color: #e74c3c; ';
+            }
 
             return `
             <tr ${rowId}>
-                <td style="${stationColor}">${stop.station}${nadHtml}</td>
+                <td style="${stationStyle}">${stop.station}${nadHtml}</td>
                 <td>${renderTime(stop.arr)}</td>
                 <td>${renderTime(stop.dep)}</td>
             </tr>
@@ -331,21 +338,15 @@ async function switchToTimetable() {
     panelBody.innerHTML = htmlContent;
     document.getElementById('back-to-details-btn').addEventListener('click', renderDetailView);
 
-    // AUTO-SCROLL NA AKTUÁLNÍ ZASTÁVKU
     setTimeout(() => {
         const currentRow = document.getElementById('current-stop-row');
         const scrollContainer = document.getElementById('tt-scroll-container');
         
         if (currentRow && scrollContainer) {
-            // Zjistíme přesné pozice prvků na obrazovce
             const containerRect = scrollContainer.getBoundingClientRect();
             const rowRect = currentRow.getBoundingClientRect();
-            
-            // Vypočítáme, o kolik pixelů musíme kontejner posunout, 
-            // aby byl cílový řádek přesně uprostřed kontejneru
             const offset = (rowRect.top - containerRect.top) - (containerRect.height / 2) + (rowRect.height / 2);
             
-            // Plynule posuneme POUZE vnitřní kontejner, okno prohlížeče zůstane nedotčeno
             scrollContainer.scrollBy({
                 top: offset,
                 behavior: 'smooth'
