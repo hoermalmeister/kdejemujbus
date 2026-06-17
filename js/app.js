@@ -14,6 +14,16 @@ const panelTitle = document.getElementById('panel-title');
 const panelBody = document.getElementById('panel-body');
 const panelClose = document.getElementById('panel-close');
 
+// --- ANALÝZA URL PARAMETRŮ PŘI STARTU ---
+const urlParams = new URLSearchParams(window.location.search);
+let startZoom = urlParams.has('z') ? parseFloat(urlParams.get('z')) : 7;
+let startLat = urlParams.has('y') ? parseFloat(urlParams.get('y')) : 49.8175;
+let startLng = urlParams.has('x') ? parseFloat(urlParams.get('x')) : 15.4730;
+let targetVehicleId = urlParams.get('id'); // e.g. "EC_278" nebo "842150_30"
+let targetTimetable = urlParams.get('tt') === '1';
+let initialClickDone = false;
+let isTimetableOpen = false;
+
 let activeTrainData = { props: null, details: null, timetable: null };
 
 // --- INICIALIZACE MAPY ---
@@ -31,10 +41,46 @@ const map = new maplibregl.Map({
         },
         layers: [{ id: 'carto-dark-layer', type: 'raster', source: 'carto-dark' }]
     },
-    center: [15.4730, 49.8175], 
-    zoom: 7,
+    center: [startLng, startLat], 
+    zoom: startZoom,
     maxZoom: 19
 });
+
+// --- FUNKCE PRO ZMĚNU URL V PROHLÍŽEČI ---
+function updateURL() {
+    const center = map.getCenter();
+    const params = new URLSearchParams();
+    params.set('x', center.lng.toFixed(4));
+    params.set('y', center.lat.toFixed(4));
+    params.set('z', map.getZoom().toFixed(1));
+    
+    if (activeTrainData && activeTrainData.props) {
+        const v = activeTrainData.props;
+        let urlId = v.id;
+        
+        // Zde si upravujeme ID do krásného tvaru (Os_14458 nebo 842150_30)
+        if (v.provider === 'GRAPP' && v.globalMatchId) {
+            urlId = v.globalMatchId.replace(/ /g, '_');
+        } else if (v.text) {
+            urlId = v.text.replace(/\//g, '_').replace(/ /g, '_');
+        } else if (v.route && v.runNumber) {
+            urlId = `${v.route}_${v.runNumber}`;
+        }
+        
+        params.set('id', urlId);
+        
+        if (isTimetableOpen) {
+            params.set('tt', '1');
+        }
+    }
+    
+    // Přepisujeme URL bez nutnosti načítat znova stránku
+    window.history.replaceState(null, '', window.location.pathname + '?' + params.toString());
+}
+
+// Při pohybu nebo zazoomování mapou URL aktualizujeme
+map.on('moveend', updateURL);
+map.on('zoomend', updateURL);
 
 // --- GENEROVÁNÍ DOKONALÝCH SAMOLEPEK ---
 function getOrCreateIcon(map, provider, routeText, heading) {
@@ -85,37 +131,8 @@ map.on('load', () => {
     map.addSource('vehicles', { type: 'geojson', data: { type: 'FeatureCollection', features: [] } });
     map.addLayer({ id: 'vehicles-layer', type: 'symbol', source: 'vehicles', layout: { 'icon-image': ['get', 'iconId'], 'icon-allow-overlap': true, 'icon-ignore-placement': true } });
 
-    // --- KLIKNUTÍ NA VOZIDLO (ZOBRAZENÍ PANELU) ---
-    map.on('click', 'vehicles-layer', async (e) => {
-        const feature = e.features[0];
-        const props = feature.properties; 
-
-        map.getSource('selected-route').setData({ type: 'Feature', geometry: { type: 'LineString', coordinates: [] } });
-
-        panelTitle.innerText = "Načítám...";
-        panelBody.innerHTML = `<div style="text-align:center; padding:20px; color:#aaa;">Stahuji podrobné informace o spoji...</div>`;
-        detailPanel.style.display = "flex";
-        setTimeout(() => detailPanel.classList.add('open'), 10); 
-
-        const providerObj = providers.find(p => p.providerName === props.provider);
-        if (providerObj) {
-            const [details, routeCoordinates] = await Promise.all([
-                providerObj.getDetails ? providerObj.getDetails(props.id) : null,
-                providerObj.getRouteInfo ? providerObj.getRouteInfo(props.id) : null
-            ]);
-            
-            if (routeCoordinates && routeCoordinates.length > 0) {
-                map.getSource('selected-route').setData({ type: 'Feature', geometry: { type: 'LineString', coordinates: routeCoordinates } });
-            }
-
-            if (details) {
-                activeTrainData = { props: props, details: details, timetable: null };
-                renderDetailView(); 
-            } else {
-                panelTitle.innerText = "Chyba";
-                panelBody.innerHTML = `<div style="color:#e74c3c; text-align:center; padding:20px;">Informace o spoji se nepodařilo stáhnout.</div>`;
-            }
-        }
+    map.on('click', 'vehicles-layer', (e) => {
+        openVehicleDetail(e.features[0].properties);
     });
 
     panelClose.addEventListener('click', closeDetailPanel);
@@ -132,8 +149,47 @@ map.on('load', () => {
     setInterval(updateData, 15000);
 });
 
-// --- POHLED 1: VYKRESLENÍ DETAILŮ O VOZIDLE ---
+// --- CENTRÁLNÍ FUNKCE PRO OTEVŘENÍ DETAILU ---
+async function openVehicleDetail(props) {
+    map.getSource('selected-route').setData({ type: 'Feature', geometry: { type: 'LineString', coordinates: [] } });
+
+    panelTitle.innerText = "Načítám...";
+    panelBody.innerHTML = `<div style="text-align:center; padding:20px; color:#aaa;">Stahuji podrobné informace o spoji...</div>`;
+    detailPanel.style.display = "flex";
+    setTimeout(() => detailPanel.classList.add('open'), 10); 
+
+    const providerObj = providers.find(p => p.providerName === props.provider);
+    if (providerObj) {
+        const [details, routeCoordinates] = await Promise.all([
+            providerObj.getDetails ? providerObj.getDetails(props.id) : null,
+            providerObj.getRouteInfo ? providerObj.getRouteInfo(props.id) : null
+        ]);
+        
+        if (routeCoordinates && routeCoordinates.length > 0) {
+            map.getSource('selected-route').setData({ type: 'Feature', geometry: { type: 'LineString', coordinates: routeCoordinates } });
+        }
+
+        if (details) {
+            activeTrainData = { props: props, details: details, timetable: null };
+            
+            // Auto-otevření jízdního řádu (pokud bylo v URL &tt=1)
+            if (targetTimetable) {
+                targetTimetable = false; // Příště už reagujeme na proklik uživatele
+                await switchToTimetable();
+            } else {
+                renderDetailView(); 
+            }
+        } else {
+            panelTitle.innerText = "Chyba";
+            panelBody.innerHTML = `<div style="color:#e74c3c; text-align:center; padding:20px;">Informace o spoji se nepodařilo stáhnout.</div>`;
+        }
+    }
+    updateURL();
+}
+
 function renderDetailView() {
+    isTimetableOpen = false;
+    updateURL();
     const d = activeTrainData.details;
 
     let titleHtml = `${d.route}`;
@@ -144,13 +200,11 @@ function renderDetailView() {
     document.querySelector('.panel-header').style.display = 'flex';
     panelTitle.innerHTML = titleHtml;
 
-    // BARVY A ZNAMÉNKA PRO ZPOŽDĚNÍ / NÁSKOK
     let delayColor = '#58d68d'; 
     let delayText = 'Bez zpoždění';
 
     if (d.delay.startsWith('-')) {
-        delayColor = '#bada55'; // Náskok (Žluto-zelená)
-        delayText = d.delay;    
+        delayColor = '#bada55'; delayText = d.delay;    
     } else if (d.delay !== '0 min') {
         let minVal = parseInt(d.delay);
         if (minVal > 15) delayColor = '#e74c3c';
@@ -173,8 +227,10 @@ function renderDetailView() {
     document.getElementById('show-timetable-btn').addEventListener('click', switchToTimetable);
 }
 
-// --- POHLED 2: PŘEPNUTÍ A VYKRESLENÍ JÍZDNÍHO ŘÁDU ---
 async function switchToTimetable() {
+    isTimetableOpen = true;
+    updateURL();
+    
     panelBody.innerHTML = `<div style="text-align:center; padding:20px; color:#aaa;">Načítám jízdní řád...</div>`;
     
     const p = activeTrainData.props;
@@ -187,13 +243,11 @@ async function switchToTimetable() {
 
     document.querySelector('.panel-header').style.display = 'none';
     
-    // Zpoždění pro hlavičku jízdního řádu
     let delayColor = '#58d68d'; 
     let delayText = '0 min';
 
     if (d.delay.startsWith('-')) {
-        delayColor = '#bada55';
-        delayText = d.delay;
+        delayColor = '#bada55'; delayText = d.delay;
     } else if (d.delay !== '0 min') {
         let minVal = parseInt(d.delay);
         if (minVal > 15) delayColor = '#e74c3c';
@@ -229,25 +283,15 @@ async function switchToTimetable() {
                 if (!data || !data.actual) return `<span style="color:#444;">-</span>`;
                 let html = '';
                 if (data.planned) {
-                    if (data.actual !== data.planned) {
-                        html += `<s class="tt-time-planned">${data.planned}</s> `;
-                    } else {
-                        html += `<span class="tt-time-planned-nodelay">${data.planned}</span> `;
-                    }
+                    if (data.actual !== data.planned) html += `<s class="tt-time-planned">${data.planned}</s> `;
+                    else html += `<span class="tt-time-planned-nodelay">${data.planned}</span> `;
                 }
                 html += `<span class="tt-time-actual" style="color: ${data.color};">${data.actual}</span>`;
                 return html;
             };
-
             const nadHtml = stop.isNAD ? `<span class="nad-badge" title="Náhradní doprava v tomto úseku">NAD</span>` : '';
-
-            return `
-            <tr>
-                <td>${stop.station}${nadHtml}</td>
-                <td>${renderTime(stop.arr)}</td>
-                <td>${renderTime(stop.dep)}</td>
-            </tr>
-        `}).join('');
+            return `<tr><td>${stop.station}${nadHtml}</td><td>${renderTime(stop.arr)}</td><td>${renderTime(stop.dep)}</td></tr>`;
+        }).join('');
         
         htmlContent += `</tbody></table>`;
     } else {
@@ -259,7 +303,10 @@ async function switchToTimetable() {
 }
 
 function closeDetailPanel() {
-    const detailPanel = document.getElementById('detail-panel');
+    activeTrainData = { props: null, details: null, timetable: null };
+    isTimetableOpen = false;
+    updateURL();
+
     detailPanel.classList.remove('open');
     setTimeout(() => { 
         detailPanel.style.display = "none"; 
@@ -275,6 +322,7 @@ async function updateData() {
         const results = await Promise.allSettled(fetchPromises);
         let allVehicles = [];
         results.forEach((result) => { if (result.status === 'fulfilled') allVehicles = allVehicles.concat(result.value); });
+        
         deduplicator.processData(allVehicles);
         const cleanData = deduplicator.getCleanData();
 
@@ -287,6 +335,24 @@ async function updateData() {
 
         map.getSource('vehicles').setData({ type: 'FeatureCollection', features });
         statusDiv.innerText = `Spojů na mapě: ${features.length}`;
+
+        // AUTO-KLIKNUTÍ PŘI NAČTENÍ Z URL
+        if (targetVehicleId && !initialClickDone) {
+            const targetFeature = features.find(f => {
+                const v = f.properties;
+                let matchId = v.id;
+                if (v.provider === 'GRAPP' && v.globalMatchId) matchId = v.globalMatchId.replace(/ /g, '_');
+                else if (v.text) matchId = v.text.replace(/\//g, '_').replace(/ /g, '_');
+                else if (v.route && v.runNumber) matchId = `${v.route}_${v.runNumber}`;
+                return matchId === targetVehicleId;
+            });
+
+            if (targetFeature) {
+                initialClickDone = true;
+                openVehicleDetail(targetFeature.properties);
+            }
+        }
+
     } catch (err) { statusDiv.innerText = "Chyba při načítání dat."; }
 }
 
@@ -294,13 +360,28 @@ async function updateData() {
 // OVLÁDACÍ PRVKY Z VDV (Lokalizace a Kompas)
 // =========================================================
 
-// Moje poloha
 const locateBtn = document.getElementById('locate-btn');
+let userLocationMarker = null;
+
 if(locateBtn) {
     locateBtn.addEventListener('click', () => {
         if ("geolocation" in navigator) {
             navigator.geolocation.getCurrentPosition(position => { 
-                map.flyTo({ center: [position.coords.longitude, position.coords.latitude], zoom: 14 }); 
+                const coords = [position.coords.longitude, position.coords.latitude];
+                map.flyTo({ center: coords, zoom: 14 }); 
+                
+                // Vykreslení pulzující značky uživatele na mapě
+                if (!userLocationMarker) {
+                    const el = document.createElement('div');
+                    el.className = 'user-location-marker';
+                    userLocationMarker = new maplibregl.Marker({ element: el })
+                        .setLngLat(coords)
+                        .addTo(map);
+                } else {
+                    userLocationMarker.setLngLat(coords);
+                }
+            }, () => {
+                alert("Nepodařilo se zjistit vaši polohu. Zkontrolujte oprávnění prohlížeče.");
             });
         } else {
             alert("Geolokace není podporována vaším prohlížečem.");
@@ -308,12 +389,10 @@ if(locateBtn) {
     });
 }
 
-// Dynamická severka (Ukazuje se jen při rotaci mapy)
+// Dynamická severka
 const compassBtn = document.createElement('div'); 
 compassBtn.id = 'compass-btn';
 compassBtn.innerHTML = `<svg viewBox="0 0 24 24" width="22" height="22" fill="#fff"><path d="M12 2L4.5 20.29l.71.71L12 18l6.79 3 .71-.71z"/></svg>`;
-// Přebíráme styling kompasu z původního skriptu
-compassBtn.style.cssText = `position: absolute; right: 20px; bottom: 84px; z-index: 1000; background: rgba(20, 20, 20, 0.85); backdrop-filter: blur(8px); border: 1px solid rgba(255,255,255,0.15); border-radius: 50%; width: 44px; height: 44px; cursor: pointer; box-shadow: 0 4px 12px rgba(0,0,0,0.5); display: none; align-items: center; justify-content: center; transition: opacity 0.2s ease;`;
 document.body.appendChild(compassBtn);
 
 compassBtn.addEventListener('click', () => { map.resetNorthPitch({ duration: 500 }); });
