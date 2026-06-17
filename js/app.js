@@ -143,12 +143,26 @@ function renderDetailView() {
     
     document.querySelector('.panel-header').style.display = 'flex';
     panelTitle.innerHTML = titleHtml;
+
+    // Detekce barvy a textu pro NÁSKOK vs ZPOŽDĚNÍ
+    let delayColor = '#58d68d'; // výchozí zelená pro 0 min
+    let delayText = 'Bez zpoždění';
+
+    if (d.delay.startsWith('-')) {
+        delayColor = '#bada55'; // Žluto-zelená pro náskok
+        delayText = d.delay;    // Vypíše "-X min"
+    } else if (d.delay !== '0 min') {
+        let minVal = parseInt(d.delay);
+        if (minVal > 15) delayColor = '#e74c3c';
+        else if (minVal > 5) delayColor = '#f39c12';
+        delayText = '+' + d.delay;
+    }
     
     panelBody.innerHTML = `
         <table class="vdv-table">
             <tr><th>Směr</th><td>${d.destination}</td></tr>
             <tr><th>Zastávka</th><td>${d.stop}</td></tr>
-            <tr><th>Zpoždění</th><td><b style="color:#e67e22;">${d.delay}</b></td></tr>
+            <tr><th>Zpoždění</th><td><b style="color:${delayColor};">${delayText}</b></td></tr>
             <tr><th>Dopravce</th><td style="font-weight:normal; color:#ddd;">${d.carrier}</td></tr>
         </table>
         <button id="show-timetable-btn" class="panel-btn panel-btn-primary">
@@ -173,10 +187,19 @@ async function switchToTimetable() {
 
     document.querySelector('.panel-header').style.display = 'none';
     
-    // Obarvení zpoždění v hlavičce (podpora náskoku)
-    let delayColor = d.delay.includes('náskok') ? '#bada55' : (d.delay === '0 min' ? '#58d68d' : '#e74c3c');
-    if(d.delay.includes('min') && parseInt(d.delay) > 0 && parseInt(d.delay) <= 5) delayColor = '#f39c12';
-    const delayText = d.delay === '0 min' ? 'Bez zpoždění' : (d.delay.includes('náskok') ? '-' + d.delay.replace('náskok', '').trim() : '+' + d.delay);
+    // Znovu určíme formát zpoždění do hlavičky JŘ
+    let delayColor = '#58d68d'; 
+    let delayText = '0 min';
+
+    if (d.delay.startsWith('-')) {
+        delayColor = '#bada55';
+        delayText = d.delay;
+    } else if (d.delay !== '0 min') {
+        let minVal = parseInt(d.delay);
+        if (minVal > 15) delayColor = '#e74c3c';
+        else if (minVal > 5) delayColor = '#f39c12';
+        delayText = '+' + d.delay;
+    }
 
     let htmlContent = `
         <div class="tt-header">
@@ -202,23 +225,20 @@ async function switchToTimetable() {
         `;
         
         htmlContent += activeTrainData.timetable.map(stop => {
-            
-            // Funkce pro vykreslení časové buňky
             const renderTime = (data) => {
                 if (!data || !data.actual) return `-`;
                 let html = '';
                 if (data.planned) {
                     if (data.actual !== data.planned) {
-                        html += `<s class="tt-time-planned">${data.planned}</s> `; // Zpoždění/Náskok = přeškrtnuto
+                        html += `<s class="tt-time-planned">${data.planned}</s> `;
                     } else {
-                        html += `<span class="tt-time-planned-nodelay">${data.planned}</span> `; // Na čas = nepřeškrtnuto
+                        html += `<span class="tt-time-planned-nodelay">${data.planned}</span> `;
                     }
                 }
                 html += `<span class="tt-time-actual" style="color: ${data.color};">${data.actual}</span>`;
                 return html;
             };
 
-            // Ikonka autobusu, pokud stanice podléhá NAD
             const nadHtml = stop.isNAD ? `<span class="nad-icon" title="Náhradní doprava v tomto úseku">🚌</span>` : '';
 
             return `
