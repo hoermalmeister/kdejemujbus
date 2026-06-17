@@ -149,9 +149,15 @@ map.on('load', () => {
     setInterval(updateData, 15000);
 });
 
+
 // --- CENTRÁLNÍ FUNKCE PRO OTEVŘENÍ DETAILU ---
 async function openVehicleDetail(props) {
     map.getSource('selected-route').setData({ type: 'Feature', geometry: { type: 'LineString', coordinates: [] } });
+
+    // Obnova výchozího scrollování panelu (pro případ, že byl předtím otevřený JŘ)
+    panelBody.style.padding = '15px';
+    panelBody.style.overflowY = 'auto';
+    panelBody.style.display = 'block';
 
     panelTitle.innerText = "Načítám...";
     panelBody.innerHTML = `<div style="text-align:center; padding:20px; color:#aaa;">Stahuji podrobné informace o spoji...</div>`;
@@ -172,9 +178,8 @@ async function openVehicleDetail(props) {
         if (details) {
             activeTrainData = { props: props, details: details, timetable: null };
             
-            // Auto-otevření jízdního řádu (pokud bylo v URL &tt=1)
             if (targetTimetable) {
-                targetTimetable = false; // Příště už reagujeme na proklik uživatele
+                targetTimetable = false; 
                 await switchToTimetable();
             } else {
                 renderDetailView(); 
@@ -187,9 +192,16 @@ async function openVehicleDetail(props) {
     updateURL();
 }
 
+// --- POHLED 1: VYKRESLENÍ DETAILŮ O VOZIDLE ---
 function renderDetailView() {
+    // Obnova výchozího rozložení pro detaily
+    panelBody.style.padding = '15px';
+    panelBody.style.overflowY = 'auto';
+    panelBody.style.display = 'block';
+
     isTimetableOpen = false;
     updateURL();
+
     const d = activeTrainData.details;
 
     let titleHtml = `${d.route}`;
@@ -231,6 +243,7 @@ function renderDetailView() {
 async function switchToTimetable() {
     isTimetableOpen = true;
     updateURL();
+
     panelBody.innerHTML = `<div style="text-align:center; padding:20px; color:#aaa;">Načítám jízdní řád...</div>`;
     
     const p = activeTrainData.props;
@@ -242,6 +255,12 @@ async function switchToTimetable() {
     }
 
     document.querySelector('.panel-header').style.display = 'none';
+
+    // Překonfigurujeme panelBody tak, aby hlavička JŘ stála na místě a scrolloval se jen vnitřek
+    panelBody.style.padding = '0';
+    panelBody.style.overflowY = 'hidden';
+    panelBody.style.display = 'flex';
+    panelBody.style.flexDirection = 'column';
     
     let delayColor = '#58d68d'; 
     let delayText = '0 min';
@@ -255,29 +274,28 @@ async function switchToTimetable() {
         delayText = '+' + d.delay;
     }
 
+    // HLAVIČKA JÍZDNÍHO ŘÁDU (Statická, nescrolluje)
     let htmlContent = `
-        <div class="tt-header">
+        <div class="tt-header" style="padding: 15px; margin: 0; background: #1e1e1e; border-bottom: 1px solid #333; z-index: 20;">
             <button id="back-to-details-btn" class="tt-back-btn">Zpět</button>
             <div class="tt-header-info">
                 <span style="margin-right:15px;">Linkospoj: <strong>${d.route}</strong></span>
                 Zpoždění: <strong class="delay-val" style="color: ${delayColor}">${delayText}</strong>
             </div>
         </div>
-    `;
-
-    if (activeTrainData.timetable && activeTrainData.timetable.length > 0) {
-        htmlContent += `
-            <table class="tt-table">
-                <thead>
+        <div id="tt-scroll-container" style="overflow-y: auto; flex-grow: 1; padding: 0 15px 15px 15px;">
+            <table class="tt-table" style="position: relative;">
+                <thead style="position: sticky; top: 0; background: #1e1e1e; z-index: 10;">
                     <tr>
-                        <th>Zastávka</th>
-                        <th>Příjezd</th>
-                        <th>Odjezd</th>
+                        <th style="padding-top: 10px;">Zastávka</th>
+                        <th style="padding-top: 10px;">Příjezd</th>
+                        <th style="padding-top: 10px;">Odjezd</th>
                     </tr>
                 </thead>
                 <tbody>
-        `;
-        
+    `;
+
+    if (activeTrainData.timetable && activeTrainData.timetable.length > 0) {
         htmlContent += activeTrainData.timetable.map(stop => {
             const renderTime = (data) => {
                 if (!data || !data.actual) return `<span style="color:#444;">-</span>`;
@@ -289,23 +307,38 @@ async function switchToTimetable() {
                 html += `<span class="tt-time-actual" style="color: ${data.color};">${data.actual}</span>`;
                 return html;
             };
-            
+
             const nadHtml = stop.isNAD ? `<span class="nad-badge" title="Náhradní doprava v tomto úseku">NAD</span>` : '';
             
-            // DETEKCE AKTUÁLNÍ ZASTÁVKY A PŘIŘAZENÍ ČERVENÉ BARVY
             const isCurrentStop = (stop.station.trim() === d.stop.trim());
             const stationColor = isCurrentStop ? 'color: #e74c3c;' : '';
+            // Pokud je to aktuální zastávka, dáme celému řádku unikátní ID
+            const rowId = isCurrentStop ? 'id="current-stop-row"' : '';
 
-            return `<tr><td style="${stationColor}">${stop.station}${nadHtml}</td><td>${renderTime(stop.arr)}</td><td>${renderTime(stop.dep)}</td></tr>`;
-        }).join('');
+            return `
+            <tr ${rowId}>
+                <td style="${stationColor}">${stop.station}${nadHtml}</td>
+                <td>${renderTime(stop.arr)}</td>
+                <td>${renderTime(stop.dep)}</td>
+            </tr>
+        `}).join('');
         
-        htmlContent += `</tbody></table>`;
+        htmlContent += `</tbody></table></div>`;
     } else {
-        htmlContent += `<div style="color:#e74c3c; text-align:center; padding:20px;">Jízdní řád není k dispozici.</div>`;
+        htmlContent += `</tbody></table></div><div style="color:#e74c3c; text-align:center; padding:20px;">Jízdní řád není k dispozici.</div>`;
     }
 
     panelBody.innerHTML = htmlContent;
     document.getElementById('back-to-details-btn').addEventListener('click', renderDetailView);
+
+    // AUTO-SCROLL NA AKTUÁLNÍ ZASTÁVKU
+    setTimeout(() => {
+        const currentRow = document.getElementById('current-stop-row');
+        if (currentRow) {
+            // "block: center" zajistí, že zastávka vyjede hezky doprostřed okna
+            currentRow.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        }
+    }, 150); // Mírné zpoždění, aby měl prohlížeč čas panel vykreslit a zkontrolovat animace
 }
 
 function closeDetailPanel() {
