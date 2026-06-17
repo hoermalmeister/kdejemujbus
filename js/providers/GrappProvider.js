@@ -19,10 +19,7 @@ export default class GrappProvider extends BaseProvider {
             if (responseJson.Token) this.currentToken = responseJson.Token;
             if (responseJson.SessionId) this.currentSession = responseJson.SessionId;
             return this.normalize(responseJson.Data);
-        } catch (error) {
-            console.error(`Chyba ve zdroji GRAPP:`, error);
-            return []; 
-        }
+        } catch (error) { return []; }
     }
 
     async getDetails(globalId) {
@@ -51,12 +48,12 @@ export default class GrappProvider extends BaseProvider {
             const carrier = doc.querySelector('.carrierRestrictionLink')?.textContent.trim() || '?';
             const destination = findValueByLabel('cílová stanice') || '?';
             const stop = findValueByLabel('potvrzená stanice') || '?';
-            const isNAD = !!doc.querySelector('.standbyTitle');
+            const isGlobalNAD = !!doc.querySelector('.standbyTitle');
 
             let delay = findValueByLabel('předpokládané zpoždění');
             if (!delay || delay === '-') delay = findValueByLabel('náskok') || '0 min';
 
-            return { route, destination, stop, delay, carrier, isNAD };
+            return { route, destination, stop, delay, carrier, isNAD: isGlobalNAD };
         } catch (error) { return null; }
     }
 
@@ -87,34 +84,18 @@ export default class GrappProvider extends BaseProvider {
             
             const parser = new DOMParser();
             const doc = parser.parseFromString(html, 'text/html');
-            
             const stationRows = doc.querySelectorAll('.route .row');
             const stops = [];
 
+            // Funkce pro přiřazení barev na základě tříd ze SŽ
             const getColorClass = (timeNode) => {
-                if (!timeNode) return '#7f8c8d'; 
+                if (!timeNode) return '#58d68d'; 
                 const className = timeNode.className || '';
-                if (className.includes('delayTo5_text')) return '#27ae60'; 
-                if (className.includes('delayTo15_text')) return '#f39c12'; 
-                if (className.includes('delayOver15_text') || className.includes('delayFuture_text')) return '#e74c3c'; 
-                return '#fff'; 
-            };
-
-            const extractTimeBlock = (cells, startIndex) => {
-                const actCell = cells[startIndex];
-                const planCell = cells[startIndex + 1];
-                if (!actCell && !planCell) return null;
-
-                const actNode = actCell?.querySelector('span[class*="delay"]');
-                const planNode = planCell?.querySelector('.timeTT');
-                
-                if (!actNode && !planNode) return null;
-
-                return {
-                    actual: actNode ? actNode.textContent.trim() : '',
-                    planned: planNode ? planNode.textContent.replace(/[()]/g, '').trim() : '',
-                    color: getColorClass(actNode)
-                };
+                if (className.includes('delayTo5_text')) return '#58d68d'; // do 5 minut zelená
+                if (className.includes('delayTo15_text')) return '#f39c12'; // do 15 minut oranžová
+                if (className.includes('delayOver15_text')) return '#e74c3c'; // nad 15 minut červená
+                if (className.includes('delayFuture_text')) return '#58d68d'; // Budoucí standard
+                return '#58d68d'; 
             };
 
             stationRows.forEach((row, index) => {
@@ -124,47 +105,66 @@ export default class GrappProvider extends BaseProvider {
                 let stationName = firstCol.querySelector('a')?.textContent.trim();
                 if (!stationName) stationName = firstCol.textContent.replace(/[\n\r]/g, '').replace(/\s+/g, ' ').trim();
                 
-                // ODSTRANĚNÍ BALASTU ("Informace o vlaku" na konci)
+                // Zahození patičky "Informace o vlaku"
                 if (!stationName || stationName.toLowerCase().includes('informace o')) return;
+                stationName = stationName.replace(/ z$/, '');
 
-                const desktopCells = Array.from(row.querySelectorAll('div[class*="col-lg-1"]')).filter(el => !el.classList.contains('hidden-lg'));
-                
-                let arrival = null;
-                let departure = null;
-                
-                // SŽ často dává první stanici pouze odjezd do sloupců index 2,3 (místo 0,1)
-                // Musíme zjistit, kde ty časy reálně jsou
-                let blockA = extractTimeBlock(desktopCells, 0);
-                let blockB = extractTimeBlock(desktopCells, 2);
+                // Zjištění lokální Náhradní dopravy pro tuto konkrétní stanici
+                const isLocalNAD = !!row.querySelector('img.ndTransport, img[src*="nd.svg"], img[src*="ND.svg"]');
 
-                if (index === 0 && !blockA && blockB) {
-                    // První stanice má jen odjezd, příjezd nastavíme stejně, aby nebyla v tabulce díra
-                    arrival = blockB;
-                    departure = blockB;
-                } else if (index === stationRows.length - 1 && blockA && !blockB) {
-                    // Poslední stanice má jen příjezd
-                    arrival = blockA;
-                    departure = blockA;
-                } else {
-                    arrival = blockA;
-                    departure = blockB;
-                    // Fallback
-                    if (!arrival && departure) arrival = departure;
-                    if (!departure && arrival) departure = arrival;
+                // Vytáhneme VŠECHNY reálné a plánované časy z desktopových buněk
+                const actualSpans = Array.from(row.querySelectorAll('div.text-right.hidden-xs span'));
+                const plannedSpans = Array.from(row.querySelectorAll('div.leftBorder.hidden-xs span'));
+
+                let arrActual = null, arrPlanned = null, arrColor = '#58d68d';
+                let depActual = null, depPlanned = null, depColor = '#58d68d';
+
+                // Pokud máme 2 časy, je to Příjezd a Odjezd
+                if (actualSpans.length >= 2) {
+                    arrActual = actualSpans[0].textContent.trim();
+                    arrColor = getColorClass(actualSpans[0]);
+                    depActual = actualSpans[1].textContent.trim();
+                    depColor = getColorClass(actualSpans[1]);
+                } else if (actualSpans.length === 1) {
+                    // Pokud je 1 čas, záleží, jestli jde o první stanici (pak je to odjezd)
+                    if (index === 0) {
+                        depActual = actualSpans[0].textContent.trim();
+                        depColor = getColorClass(actualSpans[0]);
+                    } else {
+                        arrActual = actualSpans[0].textContent.trim();
+                        arrColor = getColorClass(actualSpans[0]);
+                    }
+                }
+
+                if (plannedSpans.length >= 2) {
+                    arrPlanned = plannedSpans[0].textContent.replace(/[()]/g, '').trim();
+                    depPlanned = plannedSpans[1].textContent.replace(/[()]/g, '').trim();
+                } else if (plannedSpans.length === 1) {
+                    if (index === 0) {
+                        depPlanned = plannedSpans[0].textContent.replace(/[()]/g, '').trim();
+                    } else {
+                        arrPlanned = plannedSpans[0].textContent.replace(/[()]/g, '').trim();
+                    }
+                }
+
+                // Geniální fix pro první a poslední stanici (aby tabulka neměla prázdné díry)
+                if (index === 0 && !arrActual && depActual) {
+                    arrActual = depActual; arrPlanned = depPlanned; arrColor = depColor;
+                }
+                if (index === stationRows.length - 1 && !depActual && arrActual) {
+                    depActual = arrActual; depPlanned = arrPlanned; depColor = arrColor;
                 }
 
                 stops.push({
-                    station: stationName.replace(/ z$/, ''), // Odstraní to osamocené " z" (zastávka) na konci názvu, co SŽ někdy vrací
-                    arr: arrival,
-                    dep: departure
+                    station: stationName,
+                    isNAD: isLocalNAD,
+                    arr: { actual: arrActual, planned: arrPlanned, color: arrColor },
+                    dep: { actual: depActual, planned: depPlanned, color: depColor }
                 });
             });
 
             return stops;
-        } catch (error) {
-            console.error("Chyba při stahování jízdního řádu:", error);
-            return null;
-        }
+        } catch (error) { return null; }
     }
 
     normalize(rawData) {
@@ -189,4 +189,3 @@ export default class GrappProvider extends BaseProvider {
         });
     }
 }
-            
