@@ -33,12 +33,13 @@ export default class GrappProvider extends BaseProvider {
             const parser = new DOMParser();
             const doc = parser.parseFromString(html, 'text/html');
 
-            const findValueByLabel = (labelText) => {
+            const findValueByLabel = (labels) => {
                 const rows = Array.from(doc.querySelectorAll('.row'));
                 for (let row of rows) {
                     const cols = row.querySelectorAll('div[class^="col-"]');
-                    if (cols.length >= 2 && cols[0].textContent.toLowerCase().includes(labelText.toLowerCase())) {
-                        return cols[1].textContent.trim();
+                    if (cols.length >= 2) {
+                        const text = cols[0].textContent.toLowerCase();
+                        if (labels.some(l => text.includes(l))) return cols[1].textContent.trim();
                     }
                 }
                 return null;
@@ -46,14 +47,22 @@ export default class GrappProvider extends BaseProvider {
 
             const route = doc.querySelector('.fontSizeBig1')?.textContent.trim() || '?';
             const carrier = doc.querySelector('.carrierRestrictionLink')?.textContent.trim() || '?';
-            const destination = findValueByLabel('cílová stanice') || '?';
-            const stop = findValueByLabel('potvrzená stanice') || '?';
+            const destination = findValueByLabel(['cílová stanice']) || '?';
+            const stop = findValueByLabel(['potvrzená stanice']) || '?';
             const isGlobalNAD = !!doc.querySelector('.standbyTitle');
 
-            let delay = findValueByLabel('předpokládané zpoždění');
-            if (!delay || delay === '-') delay = findValueByLabel('náskok') || '0 min';
+            // --- DETEKCE ZPOŽDĚNÍ VS. NÁSKOK ---
+            let delayStr = '0 min';
+            const delayRaw = findValueByLabel(['předpokládané zpoždění']);
+            const advanceRaw = findValueByLabel(['náskok']);
 
-            return { route, destination, stop, delay, carrier, isNAD: isGlobalNAD };
+            if (delayRaw && delayRaw !== '-') {
+                delayStr = delayRaw; // např. "4min"
+            } else if (advanceRaw && advanceRaw !== '-') {
+                delayStr = '-' + advanceRaw.replace(/\s+/g, ''); // např. "-1min"
+            }
+
+            return { route, destination, stop, delay: delayStr, carrier, isNAD: isGlobalNAD };
         } catch (error) { return null; }
     }
 
@@ -91,61 +100,68 @@ export default class GrappProvider extends BaseProvider {
                 const firstCol = row.querySelector('div[class*="col-"]');
                 if (!firstCol) return;
                 
-                let stationName = firstCol.querySelector('a')?.textContent.trim();
-                if (!stationName) stationName = firstCol.textContent.replace(/[\n\r]/g, '').replace(/\s+/g, ' ').trim();
-                
-                // ODSTRANĚNÍ BALASTU (Tlačítko na konci)
+                let stationName = firstCol.querySelector('a')?.textContent.trim() || firstCol.textContent.replace(/[\n\r]/g, '').replace(/\s+/g, ' ').trim();
                 if (!stationName || stationName.toLowerCase().includes('informace o')) return;
                 stationName = stationName.replace(/ z$/, '');
 
-                // Zjištění lokální Náhradní dopravy pro tuto konkrétní stanici
+                // Zjištění Náhradní dopravy z ikonek SŽ
                 const isLocalNAD = !!row.querySelector('img.ndTransport, img[src*="nd.svg"], img[src*="ND.svg"]');
 
-                // EXTRAKCE ČASŮ PŘES MOBILNÍ BUŇKY (Nejneprůstřelnější metoda)
-                const mobileCells = Array.from(row.querySelectorAll('.hidden-lg.text-center'));
-                let arrCell = null; let depCell = null;
+                // EXTRAKCE ČASŮ PŘES NEROZBITNÝ VZTAH SOUROZENCŮ
+                const mobileTimeBlocks = [];
+                row.querySelectorAll('.timeTT').forEach(ttNode => {
+                    const prev = ttNode.previousElementSibling;
+                    // SŽ vždy dává actual time do spanu hned před timeTT v mobilním zobrazení
+                    if (prev && prev.tagName.toLowerCase() === 'span' && prev.className.toLowerCase().includes('delay')) {
+                        mobileTimeBlocks.push({
+                            actual: prev.textContent.trim(),
+                            planned: ttNode.textContent.replace(/[()]/g, '').trim()
+                        });
+                    }
+                });
 
-                if (mobileCells.length >= 2) {
-                    arrCell = mobileCells[0]; depCell = mobileCells[1];
-                } else if (mobileCells.length === 1) {
-                    if (index === 0) depCell = mobileCells[0]; // První stanice má jen odjezd
-                    else arrCell = mobileCells[0]; // Poslední má jen příjezd
-                }
-
-                const parseCell = (cell) => {
-                    if (!cell) return null;
-                    const actualNode = cell.querySelector('span[class*="delay"]');
-                    const plannedNode = cell.querySelector('.timeTT');
+                const parseBlock = (block) => {
+                    if (!block) return null;
+                    let actual = block.actual;
+                    let planned = block.planned;
+                    let color = '#58d68d'; 
                     
-                    let actual = actualNode ? actualNode.textContent.trim() : null;
-                    let planned = plannedNode ? plannedNode.textContent.replace(/[()]/g, '').trim() : null;
-                    
-                    let color = '#58d68d'; // Výchozí zelená
-                    
-                    // Vlastní matematika pro absolutně přesné zjištění náskoku a zpoždění
+                    // Vlastní přesná matematika zpoždění
                     if (actual && planned) {
                         let aMins = parseInt(actual.split(':')[0])*60 + parseInt(actual.split(':')[1]);
                         let pMins = parseInt(planned.split(':')[0])*60 + parseInt(planned.split(':')[1]);
                         let diff = aMins - pMins;
                         
-                        // Ošetření přechodu přes půlnoc
                         if (diff < -12*60) diff += 24*60; 
                         if (diff > 12*60) diff -= 24*60;  
                         
-                        if (diff < 0) color = '#bada55'; // Náskok (Žluto-zelená)
-                        else if (diff <= 5) color = '#58d68d'; // Do 5 min (Zelená)
-                        else if (diff <= 15) color = '#f39c12'; // Do 15 min (Oranžová)
-                        else color = '#e74c3c'; // Nad 15 min (Červená)
+                        if (diff < 0) color = '#bada55'; // Náskok 
+                        else if (diff <= 5) color = '#58d68d'; 
+                        else if (diff <= 15) color = '#f39c12'; 
+                        else color = '#e74c3c'; 
                     }
                     return { actual, planned, color };
                 };
 
-                let arrival = parseCell(arrCell);
-                let departure = parseCell(depCell);
+                let arrival = null;
+                let departure = null;
 
-                // Fix pro zamezení děr u první a poslední stanice
-                if (index === 0 && !arrival && departure) arrival = departure;
-                if (index === stationRows.length - 1 && !departure && arrival) departure = arrival;
+                // LOGIKA PRO ZABRÁNĚNÍ DĚR V TABULCE
+                if (mobileTimeBlocks.length >= 2) {
+                    arrival = parseBlock(mobileTimeBlocks[0]);
+                    departure = parseBlock(mobileTimeBlocks[1]);
+                } else if (mobileTimeBlocks.length === 1) {
+                    if (index === 0) {
+                        // První stanice má vždy JEN odjezd
+                        departure = parseBlock(mobileTimeBlocks[0]);
+                    } else if (index === stationRows.length - 1) {
+                        // Poslední stanice má vždy JEN příjezd
+                        arrival = parseBlock(mobileTimeBlocks[0]);
+                    } else {
+                        arrival = parseBlock(mobileTimeBlocks[0]);
+                        departure = parseBlock(mobileTimeBlocks[0]);
+                    }
+                }
 
                 stops.push({
                     station: stationName,
