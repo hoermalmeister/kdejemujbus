@@ -227,10 +227,8 @@ function renderDetailView() {
     document.getElementById('show-timetable-btn').addEventListener('click', switchToTimetable);
 }
 
+// --- POHLED 2: PŘEPNUTÍ A VYKRESLENÍ JÍZDNÍHO ŘÁDU ---
 async function switchToTimetable() {
-    isTimetableOpen = true;
-    updateURL();
-    
     panelBody.innerHTML = `<div style="text-align:center; padding:20px; color:#aaa;">Načítám jízdní řád...</div>`;
     
     const p = activeTrainData.props;
@@ -289,8 +287,14 @@ async function switchToTimetable() {
                 html += `<span class="tt-time-actual" style="color: ${data.color};">${data.actual}</span>`;
                 return html;
             };
+            
             const nadHtml = stop.isNAD ? `<span class="nad-badge" title="Náhradní doprava v tomto úseku">NAD</span>` : '';
-            return `<tr><td>${stop.station}${nadHtml}</td><td>${renderTime(stop.arr)}</td><td>${renderTime(stop.dep)}</td></tr>`;
+            
+            // DETEKCE AKTUÁLNÍ ZASTÁVKY A PŘIŘAZENÍ ČERVENÉ BARVY
+            const isCurrentStop = (stop.station.trim() === d.stop.trim());
+            const stationColor = isCurrentStop ? 'color: #e74c3c;' : '';
+
+            return `<tr><td style="${stationColor}">${stop.station}${nadHtml}</td><td>${renderTime(stop.arr)}</td><td>${renderTime(stop.dep)}</td></tr>`;
         }).join('');
         
         htmlContent += `</tbody></table>`;
