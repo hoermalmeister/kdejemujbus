@@ -334,11 +334,24 @@ async function switchToTimetable() {
     // AUTO-SCROLL NA AKTUÁLNÍ ZASTÁVKU
     setTimeout(() => {
         const currentRow = document.getElementById('current-stop-row');
-        if (currentRow) {
-            // "block: center" zajistí, že zastávka vyjede hezky doprostřed okna
-            currentRow.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        const scrollContainer = document.getElementById('tt-scroll-container');
+        
+        if (currentRow && scrollContainer) {
+            // Zjistíme přesné pozice prvků na obrazovce
+            const containerRect = scrollContainer.getBoundingClientRect();
+            const rowRect = currentRow.getBoundingClientRect();
+            
+            // Vypočítáme, o kolik pixelů musíme kontejner posunout, 
+            // aby byl cílový řádek přesně uprostřed kontejneru
+            const offset = (rowRect.top - containerRect.top) - (containerRect.height / 2) + (rowRect.height / 2);
+            
+            // Plynule posuneme POUZE vnitřní kontejner, okno prohlížeče zůstane nedotčeno
+            scrollContainer.scrollBy({
+                top: offset,
+                behavior: 'smooth'
+            });
         }
-    }, 150); // Mírné zpoždění, aby měl prohlížeč čas panel vykreslit a zkontrolovat animace
+    }, 150);
 }
 
 function closeDetailPanel() {
