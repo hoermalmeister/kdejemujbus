@@ -46,20 +46,32 @@ export default class GrappProvider extends BaseProvider {
             };
 
             const route = doc.querySelector('.fontSizeBig1')?.textContent.trim() || '?';
-            const carrier = doc.querySelector('.carrierRestrictionLink')?.textContent.trim() || '?';
+            
+            // --- OPRAVA DOPRAVCE (České vs Zahraniční) ---
+            let carrier = '?';
+            const carrierLink = doc.querySelector('.carrierRestrictionLink');
+            if (carrierLink) {
+                carrier = carrierLink.textContent.trim();
+            } else {
+                const carrierFallback = doc.querySelector('.row.colorDarkBlue.bold');
+                if (carrierFallback) carrier = carrierFallback.textContent.trim();
+            }
+
             const destination = findValueByLabel(['cílová stanice']) || '?';
-            const stop = findValueByLabel(['potvrzená stanice']) || '?';
+            
+            // --- OPRAVA ZASTÁVKY (České vs Zahraniční) ---
+            const stop = findValueByLabel(['potvrzená stanice', 'poslední známá poloha']) || '?';
             const isGlobalNAD = !!doc.querySelector('.standbyTitle');
 
             // --- SPRÁVNÁ DETEKCE ZPOŽDĚNÍ A NÁSKOKU ---
             let delayStr = '0 min';
-            const delayRaw = findValueByLabel(['předpokládané zpoždění']);
+            // Zahrnuto jak "předpokládané zpoždění", tak samotné "zpoždění"
+            const delayRaw = findValueByLabel(['předpokládané zpoždění', 'zpoždění']);
             const advanceRaw = findValueByLabel(['náskok']);
 
             if (delayRaw && delayRaw !== '-') {
                 delayStr = delayRaw; 
             } else if (advanceRaw && advanceRaw !== '-') {
-                // SŽ vrací '1min', my přidáme minus -> '-1min'
                 delayStr = '-' + advanceRaw.replace(/\s+/g, ''); 
             }
 
@@ -92,7 +104,6 @@ export default class GrappProvider extends BaseProvider {
             const response = await fetch(url);
             let html = await response.text();
             
-            // OPRAVA CHYBY SŽ: Přepíšeme nevalidní <div /> na validní <div></div>, aby se řádky nevnořovaly do sebe!
             html = html.replace(/<div([^>]*?)\/>/g, '<div$1></div>');
             
             const parser = new DOMParser();
@@ -110,19 +121,23 @@ export default class GrappProvider extends BaseProvider {
 
                 const isLocalNAD = !!row.querySelector('img.ndTransport, img[src*="nd.svg"], img[src*="ND.svg"]');
 
-                // Nyní bude mít každý řádek (díky opravenému HTML) striktně JEN SVÉ mobilní buňky
-                const mobileCells = Array.from(row.querySelectorAll('.hidden-lg.text-center'));
-                
-                const parseCell = (cell) => {
-                    if (!cell) return null;
-                    const actualNode = cell.querySelector('span[class*="delay"]');
-                    const plannedNode = cell.querySelector('.timeTT');
-                    
-                    let actual = actualNode ? actualNode.textContent.trim() : null;
-                    let planned = plannedNode ? plannedNode.textContent.replace(/[()]/g, '').trim() : null;
+                const mobileTimeBlocks = [];
+                row.querySelectorAll('.timeTT').forEach(ttNode => {
+                    const prev = ttNode.previousElementSibling;
+                    if (prev && prev.tagName.toLowerCase() === 'span' && prev.className.toLowerCase().includes('delay')) {
+                        mobileTimeBlocks.push({
+                            actual: prev.textContent.trim(),
+                            planned: ttNode.textContent.replace(/[()]/g, '').trim()
+                        });
+                    }
+                });
+
+                const parseBlock = (block) => {
+                    if (!block) return null;
+                    let actual = block.actual;
+                    let planned = block.planned;
                     let color = '#58d68d'; 
                     
-                    // Vlastní přesná matematika zpoždění (pro barevný náskok u konkrétní stanice)
                     if (actual && planned) {
                         let aMins = parseInt(actual.split(':')[0])*60 + parseInt(actual.split(':')[1]);
                         let pMins = parseInt(planned.split(':')[0])*60 + parseInt(planned.split(':')[1]);
@@ -131,7 +146,7 @@ export default class GrappProvider extends BaseProvider {
                         if (diff < -12*60) diff += 24*60; 
                         if (diff > 12*60) diff -= 24*60;  
                         
-                        if (diff < 0) color = '#bada55'; // Náskok 
+                        if (diff < 0) color = '#bada55'; 
                         else if (diff <= 5) color = '#58d68d'; 
                         else if (diff <= 15) color = '#f39c12'; 
                         else color = '#e74c3c'; 
@@ -142,20 +157,17 @@ export default class GrappProvider extends BaseProvider {
                 let arrival = null;
                 let departure = null;
 
-                // Spolehlivé dělení na Příjezd / Odjezd
-                if (mobileCells.length >= 2) {
-                    arrival = parseCell(mobileCells[0]);
-                    departure = parseCell(mobileCells[1]);
-                } else if (mobileCells.length === 1) {
+                if (mobileTimeBlocks.length >= 2) {
+                    arrival = parseBlock(mobileTimeBlocks[0]);
+                    departure = parseBlock(mobileTimeBlocks[1]);
+                } else if (mobileTimeBlocks.length === 1) {
                     if (index === 0) {
-                        // PRVNÍ STANICE má jen odjezd, příjezd musí zůstat čistý (null)
-                        departure = parseCell(mobileCells[0]);
+                        departure = parseBlock(mobileTimeBlocks[0]);
                     } else if (index === stationRows.length - 1) {
-                        // POSLEDNÍ STANICE má jen příjezd
-                        arrival = parseCell(mobileCells[0]);
+                        arrival = parseBlock(mobileTimeBlocks[0]);
                     } else {
-                        arrival = parseCell(mobileCells[0]);
-                        departure = parseCell(mobileCells[0]);
+                        arrival = parseBlock(mobileTimeBlocks[0]);
+                        departure = parseBlock(mobileTimeBlocks[0]);
                     }
                 }
 
