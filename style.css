@@ -85,8 +85,17 @@
 .tt-time-actual { font-weight: bold; font-size: 13px; font-family: monospace; }
 
 /* Značka lokální náhradní dopravy (Malá u stanice) */
-.nad-icon {
-    font-size: 13px; margin-left: 6px;
+.nad-badge {
+    font-size: 9px;
+    color: #e74c3c;
+    border: 1px solid #e74c3c;
+    background: transparent;
+    padding: 1px 5px;
+    border-radius: 4px;
+    margin-left: 6px;
+    vertical-align: middle;
+    font-weight: bold;
+    letter-spacing: 0.5px;
 }
 
 /* RESPONZIVITA (Vyjetí ze spodku na mobilu) */
