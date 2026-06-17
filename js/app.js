@@ -239,7 +239,7 @@ async function switchToTimetable() {
                 return html;
             };
 
-            const nadHtml = stop.isNAD ? `<span class="nad-icon" title="Náhradní doprava v tomto úseku">🚌</span>` : '';
+            const nadHtml = stop.isNAD ? `<span class="nad-badge" title="Náhradní doprava v tomto úseku">NAD</span>` : '';
 
             return `
             <tr>
