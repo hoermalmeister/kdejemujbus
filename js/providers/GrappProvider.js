@@ -47,7 +47,6 @@ export default class GrappProvider extends BaseProvider {
 
             const route = doc.querySelector('.fontSizeBig1')?.textContent.trim() || '?';
             
-            // --- OPRAVA DOPRAVCE (České vs Zahraniční) ---
             let carrier = '?';
             const carrierLink = doc.querySelector('.carrierRestrictionLink');
             if (carrierLink) {
@@ -58,14 +57,10 @@ export default class GrappProvider extends BaseProvider {
             }
 
             const destination = findValueByLabel(['cílová stanice']) || '?';
-            
-            // --- OPRAVA ZASTÁVKY (České vs Zahraniční) ---
             const stop = findValueByLabel(['potvrzená stanice', 'poslední známá poloha']) || '?';
             const isGlobalNAD = !!doc.querySelector('.standbyTitle');
 
-            // --- SPRÁVNÁ DETEKCE ZPOŽDĚNÍ A NÁSKOKU ---
             let delayStr = '0 min';
-            // Zahrnuto jak "předpokládané zpoždění", tak samotné "zpoždění"
             const delayRaw = findValueByLabel(['předpokládané zpoždění', 'zpoždění']);
             const advanceRaw = findValueByLabel(['náskok']);
 
@@ -115,6 +110,9 @@ export default class GrappProvider extends BaseProvider {
                 const firstCol = row.querySelector('div[class*="col-"]');
                 if (!firstCol) return;
                 
+                // DETEKCE PROJÍŽDĚJÍCÍ STANICE (Nemá třídu bold)
+                const isPassing = !firstCol.className.includes('bold');
+
                 let stationName = firstCol.querySelector('a')?.textContent.trim() || firstCol.textContent.replace(/[\n\r]/g, '').replace(/\s+/g, ' ').trim();
                 if (!stationName || stationName.toLowerCase().includes('informace o')) return;
                 stationName = stationName.replace(/ z$/, '');
@@ -171,7 +169,13 @@ export default class GrappProvider extends BaseProvider {
                     }
                 }
 
-                stops.push({ station: stationName, isNAD: isLocalNAD, arr: arrival, dep: departure });
+                stops.push({
+                    station: stationName,
+                    isNAD: isLocalNAD,
+                    isPassing: isPassing, // Přidáno do objektu
+                    arr: arrival,
+                    dep: departure
+                });
             });
 
             return stops;
