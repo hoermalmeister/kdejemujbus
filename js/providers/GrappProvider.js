@@ -27,7 +27,7 @@ export default class GrappProvider extends BaseProvider {
         const url = `${this.detailUrl}?id=${trainId}&token=${this.currentToken}&session=${this.currentSession}`;
         try {
             const response = await fetch(url);
-            const html = await response.text();
+            let html = await response.text();
             if (html.includes("Pokus o neautorizovaný přístup")) return null;
 
             const parser = new DOMParser();
@@ -51,15 +51,16 @@ export default class GrappProvider extends BaseProvider {
             const stop = findValueByLabel(['potvrzená stanice']) || '?';
             const isGlobalNAD = !!doc.querySelector('.standbyTitle');
 
-            // --- DETEKCE ZPOŽDĚNÍ VS. NÁSKOK ---
+            // --- SPRÁVNÁ DETEKCE ZPOŽDĚNÍ A NÁSKOKU ---
             let delayStr = '0 min';
             const delayRaw = findValueByLabel(['předpokládané zpoždění']);
             const advanceRaw = findValueByLabel(['náskok']);
 
             if (delayRaw && delayRaw !== '-') {
-                delayStr = delayRaw; // např. "4min"
+                delayStr = delayRaw; 
             } else if (advanceRaw && advanceRaw !== '-') {
-                delayStr = '-' + advanceRaw.replace(/\s+/g, ''); // např. "-1min"
+                // SŽ vrací '1min', my přidáme minus -> '-1min'
+                delayStr = '-' + advanceRaw.replace(/\s+/g, ''); 
             }
 
             return { route, destination, stop, delay: delayStr, carrier, isNAD: isGlobalNAD };
@@ -89,7 +90,10 @@ export default class GrappProvider extends BaseProvider {
         
         try {
             const response = await fetch(url);
-            const html = await response.text();
+            let html = await response.text();
+            
+            // OPRAVA CHYBY SŽ: Přepíšeme nevalidní <div /> na validní <div></div>, aby se řádky nevnořovaly do sebe!
+            html = html.replace(/<div([^>]*?)\/>/g, '<div$1></div>');
             
             const parser = new DOMParser();
             const doc = parser.parseFromString(html, 'text/html');
@@ -104,29 +108,21 @@ export default class GrappProvider extends BaseProvider {
                 if (!stationName || stationName.toLowerCase().includes('informace o')) return;
                 stationName = stationName.replace(/ z$/, '');
 
-                // Zjištění Náhradní dopravy z ikonek SŽ
                 const isLocalNAD = !!row.querySelector('img.ndTransport, img[src*="nd.svg"], img[src*="ND.svg"]');
 
-                // EXTRAKCE ČASŮ PŘES NEROZBITNÝ VZTAH SOUROZENCŮ
-                const mobileTimeBlocks = [];
-                row.querySelectorAll('.timeTT').forEach(ttNode => {
-                    const prev = ttNode.previousElementSibling;
-                    // SŽ vždy dává actual time do spanu hned před timeTT v mobilním zobrazení
-                    if (prev && prev.tagName.toLowerCase() === 'span' && prev.className.toLowerCase().includes('delay')) {
-                        mobileTimeBlocks.push({
-                            actual: prev.textContent.trim(),
-                            planned: ttNode.textContent.replace(/[()]/g, '').trim()
-                        });
-                    }
-                });
-
-                const parseBlock = (block) => {
-                    if (!block) return null;
-                    let actual = block.actual;
-                    let planned = block.planned;
+                // Nyní bude mít každý řádek (díky opravenému HTML) striktně JEN SVÉ mobilní buňky
+                const mobileCells = Array.from(row.querySelectorAll('.hidden-lg.text-center'));
+                
+                const parseCell = (cell) => {
+                    if (!cell) return null;
+                    const actualNode = cell.querySelector('span[class*="delay"]');
+                    const plannedNode = cell.querySelector('.timeTT');
+                    
+                    let actual = actualNode ? actualNode.textContent.trim() : null;
+                    let planned = plannedNode ? plannedNode.textContent.replace(/[()]/g, '').trim() : null;
                     let color = '#58d68d'; 
                     
-                    // Vlastní přesná matematika zpoždění
+                    // Vlastní přesná matematika zpoždění (pro barevný náskok u konkrétní stanice)
                     if (actual && planned) {
                         let aMins = parseInt(actual.split(':')[0])*60 + parseInt(actual.split(':')[1]);
                         let pMins = parseInt(planned.split(':')[0])*60 + parseInt(planned.split(':')[1]);
@@ -146,29 +142,24 @@ export default class GrappProvider extends BaseProvider {
                 let arrival = null;
                 let departure = null;
 
-                // LOGIKA PRO ZABRÁNĚNÍ DĚR V TABULCE
-                if (mobileTimeBlocks.length >= 2) {
-                    arrival = parseBlock(mobileTimeBlocks[0]);
-                    departure = parseBlock(mobileTimeBlocks[1]);
-                } else if (mobileTimeBlocks.length === 1) {
+                // Spolehlivé dělení na Příjezd / Odjezd
+                if (mobileCells.length >= 2) {
+                    arrival = parseCell(mobileCells[0]);
+                    departure = parseCell(mobileCells[1]);
+                } else if (mobileCells.length === 1) {
                     if (index === 0) {
-                        // První stanice má vždy JEN odjezd
-                        departure = parseBlock(mobileTimeBlocks[0]);
+                        // PRVNÍ STANICE má jen odjezd, příjezd musí zůstat čistý (null)
+                        departure = parseCell(mobileCells[0]);
                     } else if (index === stationRows.length - 1) {
-                        // Poslední stanice má vždy JEN příjezd
-                        arrival = parseBlock(mobileTimeBlocks[0]);
+                        // POSLEDNÍ STANICE má jen příjezd
+                        arrival = parseCell(mobileCells[0]);
                     } else {
-                        arrival = parseBlock(mobileTimeBlocks[0]);
-                        departure = parseBlock(mobileTimeBlocks[0]);
+                        arrival = parseCell(mobileCells[0]);
+                        departure = parseCell(mobileCells[0]);
                     }
                 }
 
-                stops.push({
-                    station: stationName,
-                    isNAD: isLocalNAD,
-                    arr: arrival,
-                    dep: departure
-                });
+                stops.push({ station: stationName, isNAD: isLocalNAD, arr: arrival, dep: departure });
             });
 
             return stops;
