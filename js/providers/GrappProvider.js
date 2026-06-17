@@ -87,17 +87,6 @@ export default class GrappProvider extends BaseProvider {
             const stationRows = doc.querySelectorAll('.route .row');
             const stops = [];
 
-            // Funkce pro přiřazení barev na základě tříd ze SŽ
-            const getColorClass = (timeNode) => {
-                if (!timeNode) return '#58d68d'; 
-                const className = timeNode.className || '';
-                if (className.includes('delayTo5_text')) return '#58d68d'; // do 5 minut zelená
-                if (className.includes('delayTo15_text')) return '#f39c12'; // do 15 minut oranžová
-                if (className.includes('delayOver15_text')) return '#e74c3c'; // nad 15 minut červená
-                if (className.includes('delayFuture_text')) return '#58d68d'; // Budoucí standard
-                return '#58d68d'; 
-            };
-
             stationRows.forEach((row, index) => {
                 const firstCol = row.querySelector('div[class*="col-"]');
                 if (!firstCol) return;
@@ -105,61 +94,64 @@ export default class GrappProvider extends BaseProvider {
                 let stationName = firstCol.querySelector('a')?.textContent.trim();
                 if (!stationName) stationName = firstCol.textContent.replace(/[\n\r]/g, '').replace(/\s+/g, ' ').trim();
                 
-                // Zahození patičky "Informace o vlaku"
+                // ODSTRANĚNÍ BALASTU (Tlačítko na konci)
                 if (!stationName || stationName.toLowerCase().includes('informace o')) return;
                 stationName = stationName.replace(/ z$/, '');
 
                 // Zjištění lokální Náhradní dopravy pro tuto konkrétní stanici
                 const isLocalNAD = !!row.querySelector('img.ndTransport, img[src*="nd.svg"], img[src*="ND.svg"]');
 
-                // Vytáhneme VŠECHNY reálné a plánované časy z desktopových buněk
-                const actualSpans = Array.from(row.querySelectorAll('div.text-right.hidden-xs span'));
-                const plannedSpans = Array.from(row.querySelectorAll('div.leftBorder.hidden-xs span'));
+                // EXTRAKCE ČASŮ PŘES MOBILNÍ BUŇKY (Nejneprůstřelnější metoda)
+                const mobileCells = Array.from(row.querySelectorAll('.hidden-lg.text-center'));
+                let arrCell = null; let depCell = null;
 
-                let arrActual = null, arrPlanned = null, arrColor = '#58d68d';
-                let depActual = null, depPlanned = null, depColor = '#58d68d';
+                if (mobileCells.length >= 2) {
+                    arrCell = mobileCells[0]; depCell = mobileCells[1];
+                } else if (mobileCells.length === 1) {
+                    if (index === 0) depCell = mobileCells[0]; // První stanice má jen odjezd
+                    else arrCell = mobileCells[0]; // Poslední má jen příjezd
+                }
 
-                // Pokud máme 2 časy, je to Příjezd a Odjezd
-                if (actualSpans.length >= 2) {
-                    arrActual = actualSpans[0].textContent.trim();
-                    arrColor = getColorClass(actualSpans[0]);
-                    depActual = actualSpans[1].textContent.trim();
-                    depColor = getColorClass(actualSpans[1]);
-                } else if (actualSpans.length === 1) {
-                    // Pokud je 1 čas, záleží, jestli jde o první stanici (pak je to odjezd)
-                    if (index === 0) {
-                        depActual = actualSpans[0].textContent.trim();
-                        depColor = getColorClass(actualSpans[0]);
-                    } else {
-                        arrActual = actualSpans[0].textContent.trim();
-                        arrColor = getColorClass(actualSpans[0]);
+                const parseCell = (cell) => {
+                    if (!cell) return null;
+                    const actualNode = cell.querySelector('span[class*="delay"]');
+                    const plannedNode = cell.querySelector('.timeTT');
+                    
+                    let actual = actualNode ? actualNode.textContent.trim() : null;
+                    let planned = plannedNode ? plannedNode.textContent.replace(/[()]/g, '').trim() : null;
+                    
+                    let color = '#58d68d'; // Výchozí zelená
+                    
+                    // Vlastní matematika pro absolutně přesné zjištění náskoku a zpoždění
+                    if (actual && planned) {
+                        let aMins = parseInt(actual.split(':')[0])*60 + parseInt(actual.split(':')[1]);
+                        let pMins = parseInt(planned.split(':')[0])*60 + parseInt(planned.split(':')[1]);
+                        let diff = aMins - pMins;
+                        
+                        // Ošetření přechodu přes půlnoc
+                        if (diff < -12*60) diff += 24*60; 
+                        if (diff > 12*60) diff -= 24*60;  
+                        
+                        if (diff < 0) color = '#bada55'; // Náskok (Žluto-zelená)
+                        else if (diff <= 5) color = '#58d68d'; // Do 5 min (Zelená)
+                        else if (diff <= 15) color = '#f39c12'; // Do 15 min (Oranžová)
+                        else color = '#e74c3c'; // Nad 15 min (Červená)
                     }
-                }
+                    return { actual, planned, color };
+                };
 
-                if (plannedSpans.length >= 2) {
-                    arrPlanned = plannedSpans[0].textContent.replace(/[()]/g, '').trim();
-                    depPlanned = plannedSpans[1].textContent.replace(/[()]/g, '').trim();
-                } else if (plannedSpans.length === 1) {
-                    if (index === 0) {
-                        depPlanned = plannedSpans[0].textContent.replace(/[()]/g, '').trim();
-                    } else {
-                        arrPlanned = plannedSpans[0].textContent.replace(/[()]/g, '').trim();
-                    }
-                }
+                let arrival = parseCell(arrCell);
+                let departure = parseCell(depCell);
 
-                // Geniální fix pro první a poslední stanici (aby tabulka neměla prázdné díry)
-                if (index === 0 && !arrActual && depActual) {
-                    arrActual = depActual; arrPlanned = depPlanned; arrColor = depColor;
-                }
-                if (index === stationRows.length - 1 && !depActual && arrActual) {
-                    depActual = arrActual; depPlanned = arrPlanned; depColor = arrColor;
-                }
+                // Fix pro zamezení děr u první a poslední stanice
+                if (index === 0 && !arrival && departure) arrival = departure;
+                if (index === stationRows.length - 1 && !departure && arrival) departure = arrival;
 
                 stops.push({
                     station: stationName,
                     isNAD: isLocalNAD,
-                    arr: { actual: arrActual, planned: arrPlanned, color: arrColor },
-                    dep: { actual: depActual, planned: depPlanned, color: depColor }
+                    arr: arrival,
+                    dep: departure
                 });
             });
 
