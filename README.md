@@ -50,8 +50,7 @@ https://preparator.eternal.cz/services/mboleslav/bus_positions?guid=146
 https://www.arriva.cz/cs/dopravni-info/aktualni-poloha-autobusu-online?mainType=MHD  
   
 ## Chybějící zdroje
-IDOK  
-Olomouc  
+IDOK    
 Třebíč  
 Ústí nad Orlicí  
 Špindlerův Mlýn  
