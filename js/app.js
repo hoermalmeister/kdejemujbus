@@ -60,7 +60,6 @@ function updateURL() {
         const v = activeTrainData.props;
         let urlId = v.id;
         
-        // Zde si upravujeme ID do krásného tvaru (Os_14458 nebo 842150_30)
         if (v.provider === 'GRAPP' && v.globalMatchId) {
             urlId = v.globalMatchId.replace(/ /g, '_');
         } else if (v.text) {
@@ -76,11 +75,9 @@ function updateURL() {
         }
     }
     
-    // Přepisujeme URL bez nutnosti načítat znova stránku
     window.history.replaceState(null, '', window.location.pathname + '?' + params.toString());
 }
 
-// Při pohybu nebo zazoomování mapou URL aktualizujeme
 map.on('moveend', updateURL);
 map.on('zoomend', updateURL);
 
@@ -131,17 +128,54 @@ map.on('load', () => {
     map.addLayer({ id: 'selected-route-layer', type: 'line', source: 'selected-route', layout: { 'line-join': 'round', 'line-cap': 'round' }, paint: { 'line-color': '#e67e22', 'line-width': 4, 'line-opacity': 0.8 } });
 
     map.addSource('vehicles', { type: 'geojson', data: { type: 'FeatureCollection', features: [] } });
-    map.addLayer({ id: 'vehicles-layer', type: 'symbol', source: 'vehicles', layout: { 'icon-image': ['get', 'iconId'], 'icon-allow-overlap': true, 'icon-ignore-placement': true } });
-
-    map.on('click', 'vehicles-layer', (e) => {
-        openVehicleDetail(e.features[0].properties);
+    
+    // Zde je přidán symbol-sort-key, aby GRAPP byl nad PID
+    map.addLayer({ 
+        id: 'vehicles-layer', 
+        type: 'symbol', 
+        source: 'vehicles', 
+        layout: { 
+            'icon-image': ['get', 'iconId'], 
+            'icon-allow-overlap': true, 
+            'icon-ignore-placement': true,
+            'symbol-sort-key': ['get', 'sortKey'] 
+        } 
     });
 
+    // Zavírání křížkem (zůstalo)
     panelClose.addEventListener('click', closeDetailPanel);
+
+    // NOVÉ ROZŠÍŘENÉ KLIKÁNÍ PRO PRSTY S PODPOROU SHLUKŮ
     map.on('click', (e) => {
         if (e.defaultPrevented) return;
-        const features = map.queryRenderedFeatures(e.point, { layers: ['vehicles-layer'] });
-        if (features.length === 0) closeDetailPanel();
+
+        // Vytvoříme kolem místa kliku bounding box o velikosti 20x20 pixelů
+        const padding = 10;
+        const bbox = [
+            [e.point.x - padding, e.point.y - padding],
+            [e.point.x + padding, e.point.y + padding]
+        ];
+
+        // Získáme všechny prvky vrstvy v rámečku
+        const features = map.queryRenderedFeatures(bbox, { layers: ['vehicles-layer'] });
+
+        if (!features || features.length === 0) {
+            closeDetailPanel();
+            return;
+        }
+
+        // Trefili jsme jeden spoj
+        if (features.length === 1) {
+            openVehicleDetail(features[0].properties);
+        } 
+        // Trefili jsme shluk (2 - 20)
+        else if (features.length <= 20) {
+            showEntitySelection(features);
+        } 
+        // Přelidněný shluk (více než 20)
+        else {
+            showTooManyEntitiesError();
+        }
     });
 
     map.on('mouseenter', 'vehicles-layer', () => map.getCanvas().style.cursor = 'pointer');
@@ -161,19 +195,19 @@ async function openVehicleDetail(props) {
     panelBody.style.display = 'block';
 
     panelTitle.innerText = "Načítám...";
+    document.querySelector('.panel-header').style.display = 'flex';
     panelBody.innerHTML = `<div style="text-align:center; padding:20px; color:#aaa;">Stahuji podrobné informace o spoji...</div>`;
     detailPanel.style.display = "flex";
     setTimeout(() => detailPanel.classList.add('open'), 10); 
 
-    // DEKÓDOVÁNÍ ATRIBUTŮ Z MAPY
     let parsedAttributes = null;
     if (props.attributes) {
-        try { parsedAttributes = JSON.parse(props.attributes); } catch (e) { parsedAttributes = props.attributes; }
+        try { parsedAttributes = typeof props.attributes === 'string' ? JSON.parse(props.attributes) : props.attributes; } 
+        catch (e) { parsedAttributes = props.attributes; }
     }
 
     const providerObj = providers.find(p => p.providerName === props.provider);
     if (providerObj) {
-        // TADY SE KONEČNĚ PŘEDÁVAJÍ parsedAttributes DO PIDU!
         const [details, routeCoordinates] = await Promise.all([
             providerObj.getDetails ? providerObj.getDetails(props.id, parsedAttributes) : null,
             providerObj.getRouteInfo ? providerObj.getRouteInfo(props.id, parsedAttributes) : null
@@ -200,9 +234,88 @@ async function openVehicleDetail(props) {
     updateURL();
 }
 
+// --- VÝBĚR Z VÍCE ENTIT ---
+function showEntitySelection(features) {
+    panelBody.style.padding = '15px';
+    panelBody.style.overflowY = 'auto';
+    panelBody.style.display = 'block';
+    
+    panelTitle.innerText = "Výběr spoje";
+    document.querySelector('.panel-header').style.display = 'flex';
+    detailPanel.style.display = "flex";
+    detailPanel.classList.add('open');
+
+    let html = `
+        <div style="color: #aaa; margin-bottom: 15px; font-size: 13px;">
+            V označené oblasti bylo nalezeno <b>${features.length}</b> spojů. Vyberte si jeden:
+        </div>
+        <div class="selection-list" style="display: flex; flex-direction: column; gap: 10px;">
+    `;
+
+    features.forEach((f, idx) => {
+        const props = f.properties;
+        let label = props.route;
+        
+        // Formát PIDu (Linka/Spoj)
+        if (props.provider === 'PID') {
+            const idParts = props.id.split('_');
+            if (idParts.length >= 3) {
+                label = `${props.route}/${idParts[2]}`;
+            }
+        }
+
+        const sideColor = props.provider === 'GRAPP' ? '#800000' : '#f76f74';
+
+        html += `
+            <div class="selection-item" data-idx="${idx}" style="padding: 12px; background: #252525; border-radius: 6px; cursor: pointer; border-left: 5px solid ${sideColor}; transition: background 0.2s;">
+                <div style="font-weight: bold; color: #fff; margin-bottom: 3px;">
+                    Linka: ${label} <span style="font-weight: normal; color: #888; font-size: 12px; margin-left: 5px;">(${props.provider})</span>
+                </div>
+                <div style="color: #bbb; font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">
+                    Směr: ${props.headsign}
+                </div>
+            </div>
+        `;
+    });
+
+    html += '</div>';
+    panelBody.innerHTML = html;
+
+    const items = panelBody.querySelectorAll('.selection-item');
+    items.forEach(item => {
+        item.addEventListener('click', () => {
+            const idx = item.getAttribute('data-idx');
+            const selectedProps = features[idx].properties;
+            openVehicleDetail(selectedProps);
+        });
+
+        item.addEventListener('mouseenter', () => item.style.background = '#2d2d2d');
+        item.addEventListener('mouseleave', () => item.style.background = '#252525');
+    });
+}
+
+// --- PŘÍLIŠ MNOHO ENTIT ---
+function showTooManyEntitiesError() {
+    panelBody.style.padding = '15px';
+    panelBody.style.display = 'block';
+    
+    panelTitle.innerText = "Chyba zobrazení";
+    document.querySelector('.panel-header').style.display = 'flex';
+    detailPanel.style.display = "flex";
+    detailPanel.classList.add('open');
+    
+    panelBody.innerHTML = `
+        <div style="color: #e74c3c; text-align: center; padding: 30px 10px; font-weight: bold; font-size: 16px;">
+            ⚠️ Příliš mnoho entit
+            <div style="color: #888; font-weight: normal; font-size: 13px; margin-top: 10px;">
+                V tomto místě je spojů příliš mnoho a překrývají se. Přibližte si více mapu, abyste mohli vybrat konkrétní spoj.
+            </div>
+        </div>
+    `;
+}
+
 // --- POHLED 1: VYKRESLENÍ DETAILŮ O VOZIDLE ---
 function renderDetailView() {
-    // Obnova výchozího rozložení pro detaily
     panelBody.style.padding = '15px';
     panelBody.style.overflowY = 'auto';
     panelBody.style.display = 'block';
@@ -259,15 +372,12 @@ async function switchToTimetable() {
     const providerObj = providers.find(prov => prov.providerName === p.provider);
 
     if (!activeTrainData.timetable && providerObj && providerObj.getTimetable) {
-        
-        // DEKÓDOVÁNÍ ATRIBUTŮ (Ochrana proti tomu, jak to MapLibre ukládá do mapy)
         let parsedAttributes = null;
         if (p.attributes) {
             try { parsedAttributes = typeof p.attributes === 'string' ? JSON.parse(p.attributes) : p.attributes; } 
             catch (e) { parsedAttributes = p.attributes; }
         }
 
-        // ZDE JE OPRAVA: PŘEDÁVÁME parsedAttributes (Druhý parametr) DO PROVIDERU!
         activeTrainData.timetable = await providerObj.getTimetable(p.id, parsedAttributes);
     }
 
@@ -382,6 +492,7 @@ function closeDetailPanel() {
     map.getSource('selected-route').setData({ type: 'Feature', geometry: { type: 'LineString', coordinates: [] } });
 }
 
+// --- AKTUALIZACE DAT ZE SERVERŮ S ŘAZENÍM VRSTEV ---
 async function updateData() {
     try {
         statusDiv.innerText = 'Aktualizuji data...';
@@ -393,13 +504,25 @@ async function updateData() {
         deduplicator.processData(allVehicles);
         const cleanData = deduplicator.getCleanData();
 
-        const features = cleanData
+        // 1. Řazení dat: PID (kreslí se první dospodu), GRAPP (kreslí se poslední navrch)
+        const sortedData = cleanData.sort((a, b) => {
+            if (a.provider === 'PID' && b.provider === 'GRAPP') return -1;
+            if (a.provider === 'GRAPP' && b.provider === 'PID') return 1;
+            return 0;
+        });
+
+        const features = sortedData
             .filter(v => v.lat !== undefined && v.lon !== undefined && v.lat !== null && v.lon !== null)
             .map(v => {
                 const iconId = getOrCreateIcon(map, v.provider, v.route, v.heading);
                 
-                // SCHOVÁNÍ ATRIBUTŮ DO TEXTU PŘED VLOŽENÍM DO MAPY
-                const safeProps = { ...v, iconId: iconId };
+                // Přidán sortKey pro maplibre symbol-sort-key a stringify pro attributes
+                const safeProps = { 
+                    ...v, 
+                    iconId: iconId,
+                    sortKey: v.provider === 'GRAPP' ? 2 : 1
+                };
+                
                 if (safeProps.attributes) {
                     safeProps.attributes = JSON.stringify(safeProps.attributes);
                 }
@@ -410,7 +533,6 @@ async function updateData() {
         map.getSource('vehicles').setData({ type: 'FeatureCollection', features });
         statusDiv.innerText = `Spojů na mapě: ${features.length}`;
 
-        // AUTO-KLIKNUTÍ PŘI NAČTENÍ Z URL
         if (targetVehicleId && !initialClickDone) {
             const targetFeature = features.find(f => {
                 const v = f.properties;
@@ -444,7 +566,6 @@ if(locateBtn) {
                 const coords = [position.coords.longitude, position.coords.latitude];
                 map.flyTo({ center: coords, zoom: 14 }); 
                 
-                // Vykreslení pulzující značky uživatele na mapě
                 if (!userLocationMarker) {
                     const el = document.createElement('div');
                     el.className = 'user-location-marker';
@@ -463,7 +584,6 @@ if(locateBtn) {
     });
 }
 
-// Dynamická severka
 const compassBtn = document.createElement('div'); 
 compassBtn.id = 'compass-btn';
 compassBtn.innerHTML = `<svg viewBox="0 0 24 24" width="22" height="22" fill="#fff"><path d="M12 2L4.5 20.29l.71.71L12 18l6.79 3 .71-.71z"/></svg>`;
