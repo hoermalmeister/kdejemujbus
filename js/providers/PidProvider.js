@@ -23,11 +23,16 @@ export default class PidProvider extends BaseProvider {
     async getDetails(globalId, attributes) {
         if (!attributes) return null;
 
+        // 1. ZÁCHRANNÁ SÍŤ (Fallback)
         let routeLine = attributes.route || '?';
         let destination = attributes.headsign || '?';
         let stop = 'Zjišťuji...';
-        let delayNum = attributes.delay || 0;
-        let delay = delayNum === 0 ? '0 min' : `${delayNum} min`;
+        
+        // Převod vteřin od PIDu na minuty pro případný fallback
+        let delaySecs = attributes.delay || 0;
+        let delayMins = Math.round(delaySecs / 60);
+        let delay = delayMins === 0 ? '0 min' : `${delayMins} min`;
+        
         let carrier = 'PID';
         let isNAD = false;
 
@@ -38,6 +43,7 @@ export default class PidProvider extends BaseProvider {
         const runNum = idParts.length >= 3 ? idParts[2] : '';
         let route = runNum ? `${routeLine}/${runNum}` : routeLine;
 
+        // 2. STÁHNUTÍ DETAILŮ Z API A PRECIZNÍ PARSOVÁNÍ HTML
         if (attributes.vehicle !== undefined && attributes.routeType !== undefined) {
             const url = `${this.detailUrl}?route_type=${attributes.routeType}&vehicle=${attributes.vehicle}`;
             try {
@@ -74,7 +80,6 @@ export default class PidProvider extends BaseProvider {
 
                             const match = destText.match(/(.*?)dále jako linka\s+(.*?)\s+směr\s+(.*)/i);
                             if (match) {
-                                // Explicitní proměnné podle tvého návrhu
                                 let firstDest = match[1].trim();
                                 let nextRoute = match[2].trim();
                                 let secondDest = match[3].trim();
@@ -116,9 +121,8 @@ export default class PidProvider extends BaseProvider {
                                 if (delaySpan) {
                                     let delayRaw = delaySpan.textContent.replace(/\u00A0/g, '').replace('min.', '').replace(/\s+/g, '').toLowerCase();
                                     
-                                    // Explicitní zápis podle tvého návrhu
                                     if (delayRaw.includes('včas')) {
-                                        delay = '0 min'; // O zbytek se postará náš app.js (Zelená + "Bez zpoždění")
+                                        delay = '0 min';
                                     } else if (delayRaw !== '') {
                                         delay = delayRaw + ' min';
                                     }
@@ -180,6 +184,30 @@ export default class PidProvider extends BaseProvider {
                     }
                 }
 
+                // --- MATEMATICKÝ VÝPOČET PRO CHYBĚJÍCÍ ČASY (Nevyjeté spoje) ---
+                if (!actual && planned) {
+                    // Bereme zpoždění z atributů, nebo 0 pokud čeká
+                    let delayS = attributes.delay || 0;
+                    let isWait = (attributes.inactive === true || attributes.statePosition === 'before_track');
+                    if (isWait) delayS = 0; 
+
+                    let delayM = Math.round(delayS / 60);
+
+                    // Matematika přičtení zpoždění k HH:MM
+                    let pParts = planned.split(':');
+                    let pMins = parseInt(pParts[0], 10) * 60 + parseInt(pParts[1], 10);
+                    let aMins = pMins + delayM;
+
+                    // Ošetření přechodu přes půlnoc
+                    if (aMins < 0) aMins += 24 * 60;
+                    if (aMins >= 24 * 60) aMins %= (24 * 60);
+
+                    let aH = Math.floor(aMins / 60).toString().padStart(2, '0');
+                    let aM = (aMins % 60).toString().padStart(2, '0');
+                    actual = `${aH}:${aM}`;
+                }
+
+                // --- URČENÍ BARVY ČASU ---
                 const parseBlock = () => {
                     let color = '#58d68d'; 
                     
