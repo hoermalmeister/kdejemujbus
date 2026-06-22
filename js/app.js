@@ -346,6 +346,8 @@ function renderDetailView() {
     let titleHtml = `${d.route}`;
     if (d.isNAD) {
         titleHtml += ` <span style="font-size: 11px; background: #e74c3c; color: white; padding: 2px 6px; border-radius: 4px; margin-left: 8px; vertical-align: middle; font-weight: bold;">Náhradní doprava</span>`;
+    } else if (d.isOdklon) {
+        titleHtml += ` <span style="font-size: 11px; background: #e74c3c; color: white; padding: 2px 6px; border-radius: 4px; margin-left: 8px; vertical-align: middle; font-weight: bold;">Odklon</span>`;
     }
     
     document.querySelector('.panel-header').style.display = 'flex';
