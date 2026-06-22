@@ -10,12 +10,15 @@ export default class IdsJmkProvider extends BaseProvider {
     async fetchData() {
         try {
             const response = await fetch(this.apiUrl);
-            if (!response.ok) throw new Error(`IDS JMK Můstek vrátil chybu: ${response.status}`);
+            if (!response.ok) {
+                const errorText = await response.text(); 
+                throw new Error(`Můstek vrátil chybu ${response.status}: ${errorText}`);
+            }
             
             const data = await response.json();
             return this.normalize(data);
         } catch (error) { 
-            console.error("Chyba IDS JMK:", error);
+            console.error("Chyba IDS JMK:", error.message);
             return []; 
         }
     }
