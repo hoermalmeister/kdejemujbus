@@ -65,6 +65,7 @@ export default class PidProvider extends BaseProvider {
 
                         route = runNum ? `${routeLine}/${runNum}` : routeLine;
 
+                        // CÍLOVÁ STANICE A PŘEJEZDY KURZŮ
                         const headsignDiv = doc.querySelector('.headsign');
                         if (headsignDiv) {
                             let destText = headsignDiv.innerHTML.replace(/<br\s*\/?>/ig, ' ');
@@ -73,13 +74,19 @@ export default class PidProvider extends BaseProvider {
 
                             const match = destText.match(/(.*?)dále jako linka\s+(.*?)\s+směr\s+(.*)/i);
                             if (match) {
-                                destination = `${match[1].trim()} > ${match[3].trim()}`;
-                                route = `${route} > ${match[2].trim()}`; 
+                                // Explicitní proměnné podle tvého návrhu
+                                let firstDest = match[1].trim();
+                                let nextRoute = match[2].trim();
+                                let secondDest = match[3].trim();
+                                
+                                destination = `${firstDest} > ${secondDest}`;
+                                route = `${route} > ${nextRoute}`; 
                             } else {
                                 destination = destText;
                             }
                         }
 
+                        // ZASTÁVKY
                         let fromStop = null;
                         const fromStopRow = doc.querySelector('.fromStopName');
                         if (fromStopRow) {
@@ -99,6 +106,7 @@ export default class PidProvider extends BaseProvider {
                         else if (fromStop) stop = fromStop;
                         else stop = 'Neznámá';
 
+                        // ZPOŽDĚNÍ, NÁSKOK A "VČAS"
                         const currentDelayDiv = doc.querySelector('.currentDelay');
                         if (currentDelayDiv) {
                             if (currentDelayDiv.classList.contains('inactive')) {
@@ -107,8 +115,13 @@ export default class PidProvider extends BaseProvider {
                                 const delaySpan = currentDelayDiv.querySelector('span');
                                 if (delaySpan) {
                                     let delayRaw = delaySpan.textContent.replace(/\u00A0/g, '').replace('min.', '').replace(/\s+/g, '').toLowerCase();
-                                    if (delayRaw.includes('včas')) delay = '0 min';
-                                    else if (delayRaw !== '') delay = delayRaw + ' min';
+                                    
+                                    // Explicitní zápis podle tvého návrhu
+                                    if (delayRaw.includes('včas')) {
+                                        delay = '0 min'; // O zbytek se postará náš app.js (Zelená + "Bez zpoždění")
+                                    } else if (delayRaw !== '') {
+                                        delay = delayRaw + ' min';
+                                    }
                                 }
                             }
                         }
@@ -135,7 +148,6 @@ export default class PidProvider extends BaseProvider {
         } catch (error) { return null; }
     }
 
-    // --- NOVÁ FUNKCE: DETAILNÍ JÍZDNÍ ŘÁD PID ---
     async getTimetable(globalId, attributes) {
         if (!attributes || !attributes.tripId) return null;
         
@@ -160,7 +172,6 @@ export default class PidProvider extends BaseProvider {
                 let planned = tds[2].textContent.replace(/[()]/g, '').trim(); 
                 let actualRaw = tds[3].textContent.trim();
                 
-                // Oříznutí vteřin (z 12:21:47 zbude 12:21)
                 let actual = null;
                 if (actualRaw) {
                     const parts = actualRaw.split(':');
@@ -169,7 +180,6 @@ export default class PidProvider extends BaseProvider {
                     }
                 }
 
-                // Generování barvy a bloků pomocí matematiky z GRAPPu
                 const parseBlock = () => {
                     let color = '#58d68d'; 
                     
@@ -181,10 +191,10 @@ export default class PidProvider extends BaseProvider {
                         if (diff < -12*60) diff += 24*60; 
                         if (diff > 12*60) diff -= 24*60;  
                         
-                        if (diff < 0) color = '#bada55'; // Náskok
-                        else if (diff <= 5) color = '#58d68d'; // OK
-                        else if (diff <= 15) color = '#f39c12'; // Menší zpoždění
-                        else color = '#e74c3c'; // Velké zpoždění
+                        if (diff < 0) color = '#bada55'; 
+                        else if (diff <= 5) color = '#58d68d'; 
+                        else if (diff <= 15) color = '#f39c12'; 
+                        else color = '#e74c3c'; 
                     }
                     return { actual, planned, color };
                 };
@@ -193,7 +203,6 @@ export default class PidProvider extends BaseProvider {
                 let arrival = null;
                 let departure = null;
 
-                // První stanice má jen odjezd, poslední jen příjezd
                 if (index === 0) {
                     departure = timeObj;
                 } else if (index === rows.length - 1) {
@@ -206,7 +215,7 @@ export default class PidProvider extends BaseProvider {
                 stops.push({
                     station: stationName,
                     isNAD: false,
-                    isPassing: false, // PID vnitřní tabulka projížděné stanice nevyznačuje
+                    isPassing: false,
                     arr: arrival,
                     dep: departure
                 });
