@@ -23,7 +23,7 @@ export default class PidProvider extends BaseProvider {
         if (!attributes) return null;
 
         // 1. ZÁCHRANNÁ SÍŤ (Fallback)
-        let route = attributes.route || '?';
+        let routeLine = attributes.route || '?';
         let destination = attributes.headsign || '?';
         let stop = 'Zjišťuji...';
         let delayNum = attributes.delay || 0;
@@ -33,6 +33,13 @@ export default class PidProvider extends BaseProvider {
 
         let isWaiting = (attributes.inactive === true || attributes.statePosition === 'before_track');
         if (isWaiting) delay = '0 min'; 
+
+        // EXTRAKCE ČÍSLA SPOJE PŘÍMO Z ID (např. pid_589_182_260608 -> vytáhneme 182)
+        const idParts = globalId.split('_');
+        const runNum = idParts.length >= 3 ? idParts[2] : '';
+
+        // Standardní složení do tvaru "589/182"
+        let route = runNum ? `${routeLine}/${runNum}` : routeLine;
 
         // 2. STÁHNUTÍ DETAILŮ Z API A PRECIZNÍ PARSOVÁNÍ HTML
         if (attributes.vehicle !== undefined && attributes.routeType !== undefined) {
@@ -45,7 +52,7 @@ export default class PidProvider extends BaseProvider {
                     if (data && data.infowindow_content) {
                         const doc = new DOMParser().parseFromString(data.infowindow_content, 'text/html');
 
-                        // CHYTRÉ ČTENÍ Z TABULKY (Dopravce, Autobusy vs. Metro)
+                        // PARSOVÁNÍ ŘÁDKŮ TABULKY (Hledání Dopravce a Oběhu metra)
                         const trs = doc.querySelectorAll('table.vehicleWindowBody tr');
                         trs.forEach(tr => {
                             const tds = tr.querySelectorAll('td');
@@ -55,35 +62,34 @@ export default class PidProvider extends BaseProvider {
                                 
                                 if (label === 'Dopravce:') {
                                     carrier = val.split(/\s{2,}/)[0];
-                                } else if (label === 'Vůz, oběh:') { // Povrchová doprava
-                                    if (val.includes(' na ')) {
-                                        route = val.split(' na ')[1].trim();
-                                    }
-                                } else if (label === 'Oběh:') { // Metro
-                                    route = val;
+                                } else if (label === 'Oběh:') {
+                                    // Detekce METRA! (Např. text "C/31" -> vezmeme pouze "C")
+                                    routeLine = val.split('/')[0].trim();
                                 }
                             }
                         });
 
-                        // CÍLOVÁ STANICE A DETEKCE PŘEJEZDŮ (Interlining)
+                        // Nyní aktualizujeme Linku/Spoj znova, kdyby se linka změnila na "A", "B" nebo "C"
+                        route = runNum ? `${routeLine}/${runNum}` : routeLine;
+
+                        // CÍLOVÁ STANICE A PŘEJEZDY KURZŮ (Interlining)
                         const headsignDiv = doc.querySelector('.headsign');
                         if (headsignDiv) {
-                            // Nahradíme případné tagy <br> mezerou, aby se slova neslepila
+                            // Nahradíme <br> mezerou, ať se nám neslepí slova
                             let destText = headsignDiv.innerHTML.replace(/<br\s*\/?>/ig, ' ');
-                            // Očistíme od dalších skrytých HTML elementů
                             const tempDoc = new DOMParser().parseFromString(destText, 'text/html');
                             destText = tempDoc.body.textContent.replace(/\s+/g, ' ').trim();
 
-                            // Regex hledá: (Cokoliv) dále jako linka (Něco) směr (Zbytek)
+                            // Magický Regex hledající strukturu "... dále jako linka ... směr ..."
                             const match = destText.match(/(.*?)dále jako linka\s+(.*?)\s+směr\s+(.*)/i);
                             if (match) {
                                 let firstDest = match[1].trim();
                                 let nextRoute = match[2].trim();
                                 let secondDest = match[3].trim();
                                 
-                                // Složíme do požadovaného formátu
+                                // Aplikace tvého požadovaného formátu!
                                 destination = `${firstDest} > ${secondDest}`;
-                                route = `${route} > ${nextRoute}`;
+                                route = `${route} > ${nextRoute}`; // např. "589/182 > 389"
                             } else {
                                 destination = destText;
                             }
@@ -119,11 +125,11 @@ export default class PidProvider extends BaseProvider {
                             } else {
                                 const delaySpan = currentDelayDiv.querySelector('span');
                                 if (delaySpan) {
-                                    // Převedeme vše na malá písmena a odstraníme zbytečnosti
+                                    // Očistíme text od entit a mezer a převedeme na malá písmena
                                     let delayRaw = delaySpan.textContent.replace(/\u00A0/g, '').replace('min.', '').replace(/\s+/g, '').toLowerCase();
                                     
                                     if (delayRaw.includes('včas')) {
-                                        delay = '0 min';
+                                        delay = '0 min'; // O zbytek se postará náš app.js (Zelená + "Bez zpoždění")
                                     } else if (delayRaw !== '') {
                                         delay = delayRaw + ' min';
                                     }
