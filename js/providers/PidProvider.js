@@ -23,16 +23,12 @@ export default class PidProvider extends BaseProvider {
     async getDetails(globalId, attributes) {
         if (!attributes) return null;
 
-        // 1. ZÁCHRANNÁ SÍŤ (Fallback)
         let routeLine = attributes.route || '?';
         let destination = attributes.headsign || '?';
         let stop = 'Zjišťuji...';
-        
-        // Převod vteřin od PIDu na minuty pro případný fallback
         let delaySecs = attributes.delay || 0;
         let delayMins = Math.round(delaySecs / 60);
         let delay = delayMins === 0 ? '0 min' : `${delayMins} min`;
-        
         let carrier = 'PID';
         let isNAD = false;
 
@@ -43,7 +39,6 @@ export default class PidProvider extends BaseProvider {
         const runNum = idParts.length >= 3 ? idParts[2] : '';
         let route = runNum ? `${routeLine}/${runNum}` : routeLine;
 
-        // 2. STÁHNUTÍ DETAILŮ Z API A PRECIZNÍ PARSOVÁNÍ HTML
         if (attributes.vehicle !== undefined && attributes.routeType !== undefined) {
             const url = `${this.detailUrl}?route_type=${attributes.routeType}&vehicle=${attributes.vehicle}`;
             try {
@@ -71,7 +66,6 @@ export default class PidProvider extends BaseProvider {
 
                         route = runNum ? `${routeLine}/${runNum}` : routeLine;
 
-                        // CÍLOVÁ STANICE A PŘEJEZDY KURZŮ
                         const headsignDiv = doc.querySelector('.headsign');
                         if (headsignDiv) {
                             let destText = headsignDiv.innerHTML.replace(/<br\s*\/?>/ig, ' ');
@@ -80,18 +74,13 @@ export default class PidProvider extends BaseProvider {
 
                             const match = destText.match(/(.*?)dále jako linka\s+(.*?)\s+směr\s+(.*)/i);
                             if (match) {
-                                let firstDest = match[1].trim();
-                                let nextRoute = match[2].trim();
-                                let secondDest = match[3].trim();
-                                
-                                destination = `${firstDest} > ${secondDest}`;
-                                route = `${route} > ${nextRoute}`; 
+                                destination = `${match[1].trim()} > ${match[3].trim()}`;
+                                route = `${route} > ${match[2].trim()}`; 
                             } else {
                                 destination = destText;
                             }
                         }
 
-                        // ZASTÁVKY
                         let fromStop = null;
                         const fromStopRow = doc.querySelector('.fromStopName');
                         if (fromStopRow) {
@@ -111,7 +100,6 @@ export default class PidProvider extends BaseProvider {
                         else if (fromStop) stop = fromStop;
                         else stop = 'Neznámá';
 
-                        // ZPOŽDĚNÍ, NÁSKOK A "VČAS"
                         const currentDelayDiv = doc.querySelector('.currentDelay');
                         if (currentDelayDiv) {
                             if (currentDelayDiv.classList.contains('inactive')) {
@@ -120,12 +108,8 @@ export default class PidProvider extends BaseProvider {
                                 const delaySpan = currentDelayDiv.querySelector('span');
                                 if (delaySpan) {
                                     let delayRaw = delaySpan.textContent.replace(/\u00A0/g, '').replace('min.', '').replace(/\s+/g, '').toLowerCase();
-                                    
-                                    if (delayRaw.includes('včas')) {
-                                        delay = '0 min';
-                                    } else if (delayRaw !== '') {
-                                        delay = delayRaw + ' min';
-                                    }
+                                    if (delayRaw.includes('včas')) delay = '0 min';
+                                    else if (delayRaw !== '') delay = delayRaw + ' min';
                                 }
                             }
                         }
@@ -168,37 +152,54 @@ export default class PidProvider extends BaseProvider {
             const rows = doc.querySelectorAll('table.timetable tbody tr');
             const stops = [];
 
+            // --- INTELIGENTNÍ ZAOKROUHLOVÁNÍ ČASU S NOVÝM PRAVIDLEM (od 46 nahoru) ---
+            const roundTime = (timeStr) => {
+                if (!timeStr) return null;
+                const parts = timeStr.split(':');
+                if (parts.length === 3) {
+                    let h = parseInt(parts[0], 10);
+                    let m = parseInt(parts[1], 10);
+                    let s = parseInt(parts[2], 10);
+                    
+                    // Od 46 vteřin nahoru přičteme celou minutu, do 45 vteřin zahazujeme (dolu)
+                    if (s >= 46) {
+                        m += 1;
+                        if (m >= 60) { 
+                            m = 0; 
+                            h = (h + 1) % 24; 
+                        }
+                    }
+                    return `${h.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')}`;
+                } else if (parts.length === 2) {
+                    return `${parts[0].padStart(2, '0')}:${parts[1].padStart(2, '0')}`;
+                }
+                return timeStr;
+            };
+
             rows.forEach((row, index) => {
                 const tds = row.querySelectorAll('td');
                 if (tds.length < 4) return;
                 
                 const stationName = tds[1].textContent.trim();
-                let planned = tds[2].textContent.replace(/[()]/g, '').trim(); 
+                let plannedRaw = tds[2].textContent.replace(/[()]/g, '').trim(); 
                 let actualRaw = tds[3].textContent.trim();
                 
-                let actual = null;
-                if (actualRaw) {
-                    const parts = actualRaw.split(':');
-                    if (parts.length >= 2) {
-                        actual = `${parts[0]}:${parts[1]}`;
-                    }
-                }
+                // Zpracování a zaokrouhlení obou časů
+                let planned = roundTime(plannedRaw);
+                let actual = roundTime(actualRaw);
 
-                // --- MATEMATICKÝ VÝPOČET PRO CHYBĚJÍCÍ ČASY (Nevyjeté spoje) ---
+                // --- MATEMATICKÝ VÝPOČET PRO CHYBĚJÍCÍ ČASY ---
                 if (!actual && planned) {
-                    // Bereme zpoždění z atributů, nebo 0 pokud čeká
                     let delayS = attributes.delay || 0;
                     let isWait = (attributes.inactive === true || attributes.statePosition === 'before_track');
                     if (isWait) delayS = 0; 
 
                     let delayM = Math.round(delayS / 60);
 
-                    // Matematika přičtení zpoždění k HH:MM
                     let pParts = planned.split(':');
                     let pMins = parseInt(pParts[0], 10) * 60 + parseInt(pParts[1], 10);
                     let aMins = pMins + delayM;
 
-                    // Ošetření přechodu přes půlnoc
                     if (aMins < 0) aMins += 24 * 60;
                     if (aMins >= 24 * 60) aMins %= (24 * 60);
 
