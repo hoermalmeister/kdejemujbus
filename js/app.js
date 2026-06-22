@@ -1,9 +1,11 @@
 import Deduplicator from './Deduplicator.js';
 import GrappProvider from './providers/GrappProvider.js';
+import PidProvider from './providers/PidProvider.js';
 
 const deduplicator = new Deduplicator();
 const providers = [
-    new GrappProvider()
+    new GrappProvider(),
+    new PidProvider()
 ];
 
 const statusDiv = document.getElementById('status');
@@ -99,7 +101,7 @@ function getOrCreateIcon(map, provider, routeText, heading) {
 
     let fillColor = '#7f8c8d';
     if (provider === 'GRAPP') fillColor = '#800000';
-    if (provider === 'PID') fillColor = '#2C89C8';
+    if (provider === 'PID') fillColor = '#f76f74';
 
     ctx.save();
     if (!isCircle) {
