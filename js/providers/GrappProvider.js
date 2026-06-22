@@ -58,7 +58,18 @@ export default class GrappProvider extends BaseProvider {
 
             const destination = findValueByLabel(['cílová stanice']) || '?';
             const stop = findValueByLabel(['potvrzená stanice', 'poslední známá poloha']) || '?';
-            const isGlobalNAD = !!doc.querySelector('.standbyTitle');
+            const standbyNode = doc.querySelector('.standbyTitle');
+            let isGlobalNAD = false;
+            let isOdklon = false;
+
+            if (standbyNode) {
+                const standbyText = standbyNode.textContent.toLowerCase();
+                if (standbyText.includes('odklon')) {
+                    isOdklon = true;
+                } else {
+                    isGlobalNAD = true; // Výchozí stav pro "Náhradní doprava" / "Mimořádnost"
+                }
+            }
 
             let delayStr = '0 min';
             const delayRaw = findValueByLabel(['předpokládané zpoždění', 'zpoždění']);
@@ -70,7 +81,7 @@ export default class GrappProvider extends BaseProvider {
                 delayStr = '-' + advanceRaw.replace(/\s+/g, ''); 
             }
 
-            return { route, destination, stop, delay: delayStr, carrier, isNAD: isGlobalNAD };
+            return { route, destination, stop, delay: delayStr, carrier, isNAD: isGlobalNAD, isOdklon: isOdklon };
         } catch (error) { return null; }
     }
 
