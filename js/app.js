@@ -129,7 +129,6 @@ map.on('load', () => {
 
     map.addSource('vehicles', { type: 'geojson', data: { type: 'FeatureCollection', features: [] } });
     
-    // Zde je přidán symbol-sort-key, aby GRAPP byl nad PID
     map.addLayer({ 
         id: 'vehicles-layer', 
         type: 'symbol', 
@@ -142,21 +141,17 @@ map.on('load', () => {
         } 
     });
 
-    // Zavírání křížkem (zůstalo)
     panelClose.addEventListener('click', closeDetailPanel);
 
-    // NOVÉ ROZŠÍŘENÉ KLIKÁNÍ PRO PRSTY S PODPOROU SHLUKŮ
     map.on('click', (e) => {
         if (e.defaultPrevented) return;
 
-        // Vytvoříme kolem místa kliku bounding box o velikosti 20x20 pixelů
         const padding = 10;
         const bbox = [
             [e.point.x - padding, e.point.y - padding],
             [e.point.x + padding, e.point.y + padding]
         ];
 
-        // Získáme všechny prvky vrstvy v rámečku
         const features = map.queryRenderedFeatures(bbox, { layers: ['vehicles-layer'] });
 
         if (!features || features.length === 0) {
@@ -164,15 +159,12 @@ map.on('load', () => {
             return;
         }
 
-        // Trefili jsme jeden spoj
         if (features.length === 1) {
             openVehicleDetail(features[0].properties);
         } 
-        // Trefili jsme shluk (2 - 20)
         else if (features.length <= 20) {
             showEntitySelection(features);
         } 
-        // Přelidněný shluk (více než 20)
         else {
             showTooManyEntitiesError();
         }
@@ -245,10 +237,8 @@ async function showEntitySelection(features) {
     detailPanel.style.display = "flex";
     detailPanel.classList.add('open');
 
-    // Zobrazíme načítání, protože si teď sáhneme pro přesné detaily všech spojů ve shluku
     panelBody.innerHTML = `<div style="color: #aaa; text-align: center; padding: 30px 10px;">Zjišťuji přesné trasy a směry spojů...</div>`;
 
-    // Paralelně stáhneme detailní informace o všech spojích v clusteru (max 20)
     const detailedFeatures = await Promise.all(features.map(async (f) => {
         const props = f.properties;
         let parsedAttributes = null;
@@ -260,7 +250,6 @@ async function showEntitySelection(features) {
         const providerObj = providers.find(p => p.providerName === props.provider);
         let details = null;
         if (providerObj && providerObj.getDetails) {
-            // Zavoláme tu samou chytrou funkci jako při kliknutí na samotný spoj
             details = await providerObj.getDetails(props.id, parsedAttributes);
         }
         return { feature: f, details: details };
@@ -273,23 +262,17 @@ async function showEntitySelection(features) {
         <div class="selection-list" style="display: flex; flex-direction: column; gap: 10px;">
     `;
 
-    // Vykreslení seznamu s finálními, parsovanými daty
     detailedFeatures.forEach((item, idx) => {
         const props = item.feature.properties;
         const d = item.details;
         
-        // Výchozí hodnoty (kdyby náhodou selhalo stažení detailu)
         let label = props.route;
         let direction = props.headsign;
 
-        // Uplatnění logiky přesně podle tvých požadavků, pokud máme detail!
         if (d) {
-            // Jak u PIDu tak u GRAPPu obsahuje "d.route" přesný tvar linky (např. 135/10 nebo Os 1234)
             label = d.route; 
-            // A "d.destination" obsahuje ten finální, přesně zparsovaný směr
             direction = d.destination; 
         } else {
-            // Bezpečnostní fallback
             if (props.provider === 'PID') {
                 const idParts = props.id.split('_');
                 if (idParts.length >= 3) label = `${props.route}/${idParts[2]}`;
@@ -316,7 +299,6 @@ async function showEntitySelection(features) {
     html += '</div>';
     panelBody.innerHTML = html;
 
-    // Navěšení události kliknutí na nově vygenerované položky
     const items = panelBody.querySelectorAll('.selection-item');
     items.forEach(item => {
         item.addEventListener('click', () => {
@@ -540,7 +522,6 @@ async function updateData() {
         deduplicator.processData(allVehicles);
         const cleanData = deduplicator.getCleanData();
 
-        // 1. Řazení dat: PID (kreslí se první dospodu), GRAPP (kreslí se poslední navrch)
         const sortedData = cleanData.sort((a, b) => {
             if (a.provider === 'PID' && b.provider === 'GRAPP') return -1;
             if (a.provider === 'GRAPP' && b.provider === 'PID') return 1;
@@ -552,7 +533,6 @@ async function updateData() {
             .map(v => {
                 const iconId = getOrCreateIcon(map, v.provider, v.route, v.heading);
                 
-                // Přidán sortKey pro maplibre symbol-sort-key a stringify pro attributes
                 const safeProps = { 
                     ...v, 
                     iconId: iconId,
@@ -585,6 +565,11 @@ async function updateData() {
             }
         }
 
+        // --- AUTOMATICKÁ AKTUALIZACE POLOHY UŽIVATELE ---
+        if (isUserLocationActive) {
+            updateUserLocation(false); // false = hýbe pouze kuličkou, netrhá kamerou
+        }
+
     } catch (err) { statusDiv.innerText = "Chyba při načítání dat."; }
 }
 
@@ -594,29 +579,43 @@ async function updateData() {
 
 const locateBtn = document.getElementById('locate-btn');
 let userLocationMarker = null;
+let isUserLocationActive = false; // Příznak aktivované geolokace
+
+// Centrální funkce pro geolokaci
+function updateUserLocation(flyToUser = false) {
+    if ("geolocation" in navigator) {
+        navigator.geolocation.getCurrentPosition(position => { 
+            const coords = [position.coords.longitude, position.coords.latitude];
+            
+            // Na pozici skočíme jen při kliku na tlačítko, v cyklu už ne
+            if (flyToUser) {
+                map.flyTo({ center: coords, zoom: 14 }); 
+            }
+            
+            if (!userLocationMarker) {
+                const el = document.createElement('div');
+                el.className = 'user-location-marker';
+                userLocationMarker = new maplibregl.Marker({ element: el })
+                    .setLngLat(coords)
+                    .addTo(map);
+            } else {
+                userLocationMarker.setLngLat(coords);
+            }
+        }, (err) => {
+            console.warn("Nepodařilo se aktualizovat polohu uživatele:", err);
+            if (flyToUser) {
+                alert("Nepodařilo se zjistit vaši polohu. Zkontrolujte oprávnění prohlížeče.");
+            }
+        });
+    } else if (flyToUser) {
+        alert("Geolokace není podporována vaším prohlížečem.");
+    }
+}
 
 if(locateBtn) {
     locateBtn.addEventListener('click', () => {
-        if ("geolocation" in navigator) {
-            navigator.geolocation.getCurrentPosition(position => { 
-                const coords = [position.coords.longitude, position.coords.latitude];
-                map.flyTo({ center: coords, zoom: 14 }); 
-                
-                if (!userLocationMarker) {
-                    const el = document.createElement('div');
-                    el.className = 'user-location-marker';
-                    userLocationMarker = new maplibregl.Marker({ element: el })
-                        .setLngLat(coords)
-                        .addTo(map);
-                } else {
-                    userLocationMarker.setLngLat(coords);
-                }
-            }, () => {
-                alert("Nepodařilo se zjistit vaši polohu. Zkontrolujte oprávnění prohlížeče.");
-            });
-        } else {
-            alert("Geolokace není podporována vaším prohlížečem.");
-        }
+        isUserLocationActive = true;
+        updateUserLocation(true); // true = manuální start vyvolá skok kamery
     });
 }
 
