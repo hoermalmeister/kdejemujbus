@@ -3,7 +3,7 @@
 | Dopravní systém | Polohy | Detaily vozidel | Směr | Jízdní řády | Trasy | Zastávky | Odjezdy ze zastávek |
 | :--- | :---: | :---: | :---: | :---: | :---: | :---: | :---: |
 | GRAPP | ✅ | ✅ | ✅ | ✅ | ✅ | [ ] | [ ] |
-| PID | [ ] | [ ] | [ ] | [ ] | [ ] | [ ] | [ ] |
+| PID | ✅ | ✅ | ✅ | ✅ | ✅ | [ ] | [ ] |
 | DÚK | [ ] | [ ] | [ ] | [ ] | [ ] | [ ] | [ ] |
 | IDOL | [ ] | [ ] | [ ] | [ ] | [ ] | [ ] | [ ] |
 | IREDO | [ ] | [ ] | [ ] | [ ] | [ ] | [ ] | [ ] |
@@ -27,7 +27,7 @@
 
 ## Zdroje aktuálních poloh
 https://grapp.spravazeleznic.cz/  
-https://www.mpvnet.cz/pid/map  
+https://mapa.pid.cz/  
 https://provoz.kr-ustecky.cz/TMD  
 https://www.mpvnet.cz/idol/map  
 https://iredo.online/  
