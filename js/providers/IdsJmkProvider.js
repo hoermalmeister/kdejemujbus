@@ -26,17 +26,19 @@ export default class IdsJmkProvider extends BaseProvider {
     async getDetails(globalId, attributes) {
         if (!attributes) return null;
 
-        // VYUŽITÍ CÍLE 1: Linka/Spoj
         let routeLine = attributes.LineName || '?';
-        let routeId = attributes.RouteID || ''; // Zde se ukrývá číslo spoje!
+        let routeId = attributes.RouteID || ''; 
         let route = routeId ? `${routeLine}/${routeId}` : routeLine;
 
         let destination = attributes.FinalStopName || '?';
         
-        // VYUŽITÍ CÍLE 2: Vyhledání názvu podle GTFS (Připravil nám to Můstek!)
+        // Přečtení hotového názvu zastávky
         let stop = 'Na trase...';
         if (attributes.LastStopName) {
             stop = attributes.LastStopName;
+        } else if (attributes.LastStopID) {
+            // Extrémní záloha, kdyby zastávka v GTFS chyběla
+            stop = `Zastávka ID: ${attributes.LastStopID}`; 
         }
 
         let delayNum = attributes.Delay || 0;
