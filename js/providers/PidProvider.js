@@ -20,44 +20,58 @@ export default class PidProvider extends BaseProvider {
     }
 
     async getDetails(globalId, attributes) {
-        if (!attributes || !attributes.vehicle || attributes.routeType === undefined) return null;
+        if (!attributes) return null;
 
-        const url = `${this.detailUrl}?route_type=${attributes.routeType}&vehicle=${attributes.vehicle}`;
-        try {
-            const response = await fetch(url);
-            const data = await response.json();
-            
-            // PID nám vrací JSON, uvnitř kterého je HTML kód vizitky
-            const html = data.infowindow_content;
-            const doc = new DOMParser().parseFromString(html, 'text/html');
+        // 1. ZÁCHRANNÁ SÍŤ (Fallback): Vyplníme data z toho, co už víme
+        let route = attributes.route || '?';
+        let destination = attributes.headsign || '?';
+        let stop = 'Zjišťuji...';
+        let delayNum = attributes.delay || 0;
+        let delay = delayNum === 0 ? '0 min' : `${delayNum} min`;
+        let carrier = 'PID';
+        let isNAD = false;
 
-            const route = doc.querySelector('.routeId')?.textContent.trim() || attributes.route || '?';
-            const destination = doc.querySelector('.headsign')?.textContent.trim() || attributes.headsign || '?';
-            
-            // Hledání poslední zastávky
-            let stop = '?';
-            const currentStopRow = doc.querySelector('.currentStop');
-            if (currentStopRow) {
-                const tds = currentStopRow.querySelectorAll('td');
-                if (tds.length >= 2) stop = tds[1].textContent.trim();
+        // 2. STÁHNUTÍ REÁLNÝCH DETAILŮ Z API (Pokud máme ID vozidla)
+        if (attributes.vehicle !== undefined && attributes.routeType !== undefined) {
+            const url = `${this.detailUrl}?route_type=${attributes.routeType}&vehicle=${attributes.vehicle}`;
+            try {
+                const response = await fetch(url);
+                if (response.ok) {
+                    const data = await response.json();
+                    
+                    if (data && data.infowindow_content) {
+                        const doc = new DOMParser().parseFromString(data.infowindow_content, 'text/html');
+
+                        // Poslední zastávka
+                        const currentStopRow = doc.querySelector('.currentStop');
+                        if (currentStopRow) {
+                            const tds = currentStopRow.querySelectorAll('td');
+                            if (tds.length >= 2) stop = tds[1].textContent.trim();
+                        }
+
+                        // Zpoždění (často obsahuje &nbsp; což je \u00A0 v textContent)
+                        const delaySpan = doc.querySelector('.currentDelay span');
+                        if (delaySpan) {
+                            delay = delaySpan.textContent.replace(/\u00A0/g, ' ').replace('min.', 'min').trim();
+                        }
+
+                        // Dopravce
+                        const operatorTd = doc.querySelector('td.operator');
+                        if (operatorTd) {
+                            carrier = operatorTd.textContent.replace(/\n/g, '').trim().split(/\s{2,}/)[0];
+                        }
+                    }
+                }
+            } catch (error) {
+                console.warn("PID Detail selhal, použije se fallback:", error);
             }
+        }
 
-            // Hledání zpoždění
-            let delay = '0 min';
-            const delaySpan = doc.querySelector('.currentDelay span');
-            if (delaySpan) delay = delaySpan.textContent.replace('min.', 'min').trim();
-
-            // Hledání dopravce
-            let carrier = 'PID';
-            const operatorTd = doc.querySelector('td.operator');
-            if (operatorTd) carrier = operatorTd.textContent.replace(/\n/g, '').trim().split('  ')[0]; // Ořezání zbytečných znaků
-
-            return { route, destination, stop, delay, carrier, isNAD: false };
-        } catch (error) { return null; }
+        // Pokud detailní API selhalo, "stop" zůstane "Zjišťuji...", ale UI nespadne
+        return { route, destination, stop, delay, carrier, isNAD };
     }
 
     async getRouteInfo(globalId, attributes) {
-        // Zde s výhodou použijeme tripId, které už máme v globalId (např. pid_135_998_260302)
         const tripId = globalId.replace('pid_', '');
         const url = `${this.shapeUrl}?id=${tripId}`;
         
@@ -66,7 +80,6 @@ export default class PidProvider extends BaseProvider {
             const data = await response.json();
             if (!data || !data.shape || !Array.isArray(data.shape)) return null;
             
-            // Převedeme shape data na formát [lon, lat] pro naši mapu
             return data.shape.map(point => [point.lon, point.lat]);
         } catch (error) { return null; }
     }
@@ -80,8 +93,6 @@ export default class PidProvider extends BaseProvider {
             const data = await response.json();
             if (!data || !data.stops || !Array.isArray(data.stops)) return null;
 
-            // PID v getShape neposílá časy, ale pouze seznam zastávek. 
-            // Prozatím tedy vypíšeme jen seznam názvů s pomlčkami místo časů.
             return data.stops.map(stop => ({
                 station: stop.stopName,
                 isNAD: false,
@@ -97,7 +108,7 @@ export default class PidProvider extends BaseProvider {
         const vehicles = [];
         
         for (const trip of rawData.trips) {
-            if (trip.routeType === 2) continue; // Zahazujeme vlaky
+            if (trip.routeType === 2) continue;
 
             const heading = (trip.bearing !== undefined && trip.bearing !== null) ? trip.bearing : null;
             const headsign = trip.headsign || 'Neznámý cíl';
