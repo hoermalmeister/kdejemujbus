@@ -18,24 +18,25 @@ const panelTitle = document.getElementById('panel-title');
 const panelBody = document.getElementById('panel-body');
 const panelClose = document.getElementById('panel-close');
 
-function getProviderColor(provider) {
-    if (provider === 'GRAPP') return '#800000';
-    if (provider === 'PID') return '#f76f74';
-    if (provider === 'IDS JMK') return '#a4d783';
-    return '#7f8c8d';
-}
-
 // --- ANALÝZA URL PARAMETRŮ PŘI STARTU ---
 const urlParams = new URLSearchParams(window.location.search);
 let startZoom = urlParams.has('z') ? parseFloat(urlParams.get('z')) : 7;
 let startLat = urlParams.has('y') ? parseFloat(urlParams.get('y')) : 49.8175;
 let startLng = urlParams.has('x') ? parseFloat(urlParams.get('x')) : 15.4730;
-let targetVehicleId = urlParams.get('id'); // e.g. "EC_278" nebo "842150_30"
+let targetVehicleId = urlParams.get('id'); 
 let targetTimetable = urlParams.get('tt') === '1';
 let initialClickDone = false;
 let isTimetableOpen = false;
 
 let activeTrainData = { props: null, details: null, timetable: null };
+
+// --- CENTRÁLNÍ DEFINICE BAREV PRO POSKYTOVATELE ---
+function getProviderColor(provider) {
+    if (provider === 'GRAPP') return '#800000';
+    if (provider === 'PID') return '#f76f74';
+    if (provider === 'IDS JMK') return '#a4d783'; // Jarní zeleň IDS JMK
+    return '#7f8c8d'; // Výchozí
+}
 
 // --- INICIALIZACE MAPY ---
 const map = new maplibregl.Map({
@@ -105,6 +106,7 @@ function getOrCreateIcon(map, provider, routeText, heading) {
     
     ctx.scale(2, 2); ctx.translate(size/2, size/2); 
 
+    // CENTRÁLNÍ BARVA Z NAŠÍ FUNKCE
     let fillColor = getProviderColor(provider);
 
     ctx.save();
@@ -135,7 +137,6 @@ map.on('load', () => {
     map.addLayer({ id: 'selected-route-layer', type: 'line', source: 'selected-route', layout: { 'line-join': 'round', 'line-cap': 'round' }, paint: { 'line-color': '#e67e22', 'line-width': 4, 'line-opacity': 0.8 } });
 
     map.addSource('vehicles', { type: 'geojson', data: { type: 'FeatureCollection', features: [] } });
-    
     map.addLayer({ 
         id: 'vehicles-layer', 
         type: 'symbol', 
@@ -150,6 +151,7 @@ map.on('load', () => {
 
     panelClose.addEventListener('click', closeDetailPanel);
 
+    // NOVÉ ROZŠÍŘENÉ KLIKÁNÍ (BBOX a CLUSTERY)
     map.on('click', (e) => {
         if (e.defaultPrevented) return;
 
@@ -168,11 +170,9 @@ map.on('load', () => {
 
         if (features.length === 1) {
             openVehicleDetail(features[0].properties);
-        } 
-        else if (features.length <= 20) {
+        } else if (features.length <= 20) {
             showEntitySelection(features);
-        } 
-        else {
+        } else {
             showTooManyEntitiesError();
         }
     });
@@ -183,7 +183,6 @@ map.on('load', () => {
     updateData();
     setInterval(updateData, 15000);
 });
-
 
 // --- CENTRÁLNÍ FUNKCE PRO OTEVŘENÍ DETAILU ---
 async function openVehicleDetail(props) {
@@ -218,7 +217,6 @@ async function openVehicleDetail(props) {
 
         if (details) {
             activeTrainData = { props: props, details: details, timetable: null };
-            
             if (targetTimetable) {
                 targetTimetable = false; 
                 await switchToTimetable();
@@ -233,7 +231,7 @@ async function openVehicleDetail(props) {
     updateURL();
 }
 
-// --- VÝBĚR Z VÍCE ENTIT ---
+// --- VÝBĚR Z VÍCE ENTIT (ROZCESTNÍK) ---
 async function showEntitySelection(features) {
     panelBody.style.padding = '15px';
     panelBody.style.overflowY = 'auto';
@@ -289,6 +287,7 @@ async function showEntitySelection(features) {
             }
         }
 
+        // TADY SE VYUŽÍVÁ CENTRÁLNÍ BARVA
         const sideColor = getProviderColor(props.provider);
 
         html += `
@@ -354,7 +353,7 @@ function renderDetailView() {
     if (d.isNAD) {
         titleHtml += ` <span style="font-size: 11px; background: #e74c3c; color: white; padding: 2px 6px; border-radius: 4px; margin-left: 8px; vertical-align: middle; font-weight: bold;">Náhradní doprava</span>`;
     } else if (d.isOdklon) {
-        titleHtml += ` <span style="font-size: 11px; background: #e74c3c; color: white; padding: 2px 6px; border-radius: 4px; margin-left: 8px; vertical-align: middle; font-weight: bold;">Odklon</span>`;
+        titleHtml += ` <span style="font-size: 11px; background: #e67e22; color: white; padding: 2px 6px; border-radius: 4px; margin-left: 8px; vertical-align: middle; font-weight: bold;">Odklon</span>`;
     }
     
     document.querySelector('.panel-header').style.display = 'flex';
@@ -531,10 +530,14 @@ async function updateData() {
         deduplicator.processData(allVehicles);
         const cleanData = deduplicator.getCleanData();
 
+        // Řazení, aby GRAPP byl úplně nahoře
         const sortedData = cleanData.sort((a, b) => {
-            if (a.provider === 'PID' && b.provider === 'GRAPP') return -1;
-            if (a.provider === 'GRAPP' && b.provider === 'PID') return 1;
-            return 0;
+            const getZIndex = (p) => {
+                if (p === 'GRAPP') return 3;
+                if (p === 'IDS JMK') return 2;
+                return 1; 
+            };
+            return getZIndex(a.provider) - getZIndex(b.provider);
         });
 
         const features = sortedData
@@ -576,7 +579,7 @@ async function updateData() {
 
         // --- AUTOMATICKÁ AKTUALIZACE POLOHY UŽIVATELE ---
         if (isUserLocationActive) {
-            updateUserLocation(false); // false = hýbe pouze kuličkou, netrhá kamerou
+            updateUserLocation(false); 
         }
 
     } catch (err) { statusDiv.innerText = "Chyba při načítání dat."; }
@@ -588,15 +591,13 @@ async function updateData() {
 
 const locateBtn = document.getElementById('locate-btn');
 let userLocationMarker = null;
-let isUserLocationActive = false; // Příznak aktivované geolokace
+let isUserLocationActive = false; 
 
-// Centrální funkce pro geolokaci
 function updateUserLocation(flyToUser = false) {
     if ("geolocation" in navigator) {
         navigator.geolocation.getCurrentPosition(position => { 
             const coords = [position.coords.longitude, position.coords.latitude];
             
-            // Na pozici skočíme jen při kliku na tlačítko, v cyklu už ne
             if (flyToUser) {
                 map.flyTo({ center: coords, zoom: 14 }); 
             }
@@ -624,7 +625,7 @@ function updateUserLocation(flyToUser = false) {
 if(locateBtn) {
     locateBtn.addEventListener('click', () => {
         isUserLocationActive = true;
-        updateUserLocation(true); // true = manuální start vyvolá skok kamery
+        updateUserLocation(true); 
     });
 }
 
