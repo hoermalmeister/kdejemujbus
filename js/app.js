@@ -259,7 +259,16 @@ async function switchToTimetable() {
     const providerObj = providers.find(prov => prov.providerName === p.provider);
 
     if (!activeTrainData.timetable && providerObj && providerObj.getTimetable) {
-        activeTrainData.timetable = await providerObj.getTimetable(p.id);
+        
+        // DEKÓDOVÁNÍ ATRIBUTŮ (Ochrana proti tomu, jak to MapLibre ukládá do mapy)
+        let parsedAttributes = null;
+        if (p.attributes) {
+            try { parsedAttributes = typeof p.attributes === 'string' ? JSON.parse(p.attributes) : p.attributes; } 
+            catch (e) { parsedAttributes = p.attributes; }
+        }
+
+        // ZDE JE OPRAVA: PŘEDÁVÁME parsedAttributes (Druhý parametr) DO PROVIDERU!
+        activeTrainData.timetable = await providerObj.getTimetable(p.id, parsedAttributes);
     }
 
     document.querySelector('.panel-header').style.display = 'none';
@@ -319,14 +328,11 @@ async function switchToTimetable() {
             const isCurrentStop = (stop.station.trim() === d.stop.trim());
             const rowId = isCurrentStop ? 'id="current-stop-row"' : '';
             
-            // LOGIKA PRO STYLOVÁNÍ NÁZVU STANICE
             let stationStyle = '';
             if (stop.isPassing) {
-                // Projíždějící stanice: Zrušení boldu (normal), přidání kurzívy a ztmavení textu
                 stationStyle += 'font-weight: normal; font-style: italic; color: #bbb; ';
             }
             if (isCurrentStop) {
-                // Aktuální stanice: Pokud je projíždějící, zůstane italic, ale barva se přepíše na červenou
                 stationStyle += 'color: #e74c3c; ';
             }
 
