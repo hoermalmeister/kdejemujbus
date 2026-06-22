@@ -18,6 +18,13 @@ const panelTitle = document.getElementById('panel-title');
 const panelBody = document.getElementById('panel-body');
 const panelClose = document.getElementById('panel-close');
 
+function getProviderColor(provider) {
+    if (provider === 'GRAPP') return '#800000';
+    if (provider === 'PID') return '#f76f74';
+    if (provider === 'IDS JMK') return '#a4d783';
+    return '#7f8c8d';
+}
+
 // --- ANALÝZA URL PARAMETRŮ PŘI STARTU ---
 const urlParams = new URLSearchParams(window.location.search);
 let startZoom = urlParams.has('z') ? parseFloat(urlParams.get('z')) : 7;
@@ -98,10 +105,7 @@ function getOrCreateIcon(map, provider, routeText, heading) {
     
     ctx.scale(2, 2); ctx.translate(size/2, size/2); 
 
-    let fillColor = '#7f8c8d';
-    if (provider === 'GRAPP') fillColor = '#800000';
-    if (provider === 'PID') fillColor = '#f76f74';
-    if (provider === 'IDS JMK') fillColor = '#2980b9';
+    let fillColor = getProviderColor(provider);
 
     ctx.save();
     if (!isCircle) {
@@ -285,7 +289,7 @@ async function showEntitySelection(features) {
             }
         }
 
-        const sideColor = props.provider === 'GRAPP' ? '#800000' : '#f76f74';
+        const sideColor = getProviderColor(props.provider);
 
         html += `
             <div class="selection-item" data-idx="${idx}" style="padding: 12px; background: #252525; border-radius: 6px; cursor: pointer; border-left: 5px solid ${sideColor}; transition: background 0.2s;">
