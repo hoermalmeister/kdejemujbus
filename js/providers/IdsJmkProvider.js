@@ -26,19 +26,36 @@ export default class IdsJmkProvider extends BaseProvider {
     async getDetails(globalId, attributes) {
         if (!attributes) return null;
 
-        // IDS JMK zatím nemá napojený detailní parser, použijeme chytrou zálohu ze základních dat
-        let route = attributes.LineName || '?';
+        // VYUŽITÍ CÍLE 1: Linka/Spoj
+        let routeLine = attributes.LineName || '?';
+        let routeId = attributes.RouteID || ''; // Zde se ukrývá číslo spoje!
+        let route = routeId ? `${routeLine}/${routeId}` : routeLine;
+
         let destination = attributes.FinalStopName || '?';
         
+        // VYUŽITÍ CÍLE 2: Vyhledání názvu podle GTFS (Připravil nám to Můstek!)
+        let stop = 'Na trase...';
+        if (attributes.LastStopName) {
+            stop = attributes.LastStopName;
+        }
+
         let delayNum = attributes.Delay || 0;
         let delay = delayNum === 0 ? '0 min' : `${delayNum} min`;
+        
         let isWaiting = attributes.IsInactive === true;
-        if (isWaiting) delay = '0 min'; 
+        if (isWaiting) {
+            delay = '0 min'; 
+            if (attributes.LastStopName) {
+                stop = `Výchozí zastávka: ${attributes.LastStopName}`;
+            } else {
+                stop = 'Čeká na výchozí zastávce';
+            }
+        }
 
         return { 
             route: route, 
             destination: destination, 
-            stop: isWaiting ? 'Výchozí zastávka (Čeká)' : 'Na trase...', 
+            stop: stop, 
             delay: delay, 
             carrier: 'IDS JMK', 
             isNAD: false 
@@ -53,10 +70,9 @@ export default class IdsJmkProvider extends BaseProvider {
         const vehicles = [];
         
         for (const trip of rawData.Vehicles) {
-            // VType 5 jsou vlaky (S2, S3, R8 atd.). Ty rovnou zahazujeme, máme je z GRAPPu.
+            // Vlaky S2, S3, R8 atd. z jihu rovnou zahazujeme, máme je z GRAPPu.
             if (trip.VType === 5) continue; 
 
-            // Nastavení šipky vs kroužku (pokud vůz čeká)
             let heading = (trip.Bearing !== undefined && trip.Bearing !== null) ? trip.Bearing : null;
             if (trip.IsInactive === true) {
                 heading = null; 
@@ -68,9 +84,12 @@ export default class IdsJmkProvider extends BaseProvider {
                 lat: trip.Lat,
                 lon: trip.Lng,
                 heading: heading,
-                route: trip.LineName || '?',
+                route: trip.LineName || '?', // Do samotné mapy posíláme pořád jen "1", "67", atd.
                 headsign: trip.FinalStopName || 'Neznámý cíl',
-                globalMatchId: `idsjmk_${trip.LineName}_${trip.Course}`, 
+                
+                // Match ID se teď inteligentně váže na RouteID
+                globalMatchId: `idsjmk_${trip.LineName}_${trip.RouteID}`, 
+                
                 delay: trip.Delay || 0,
                 attributes: { ...trip } 
             });
