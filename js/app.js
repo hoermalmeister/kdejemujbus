@@ -235,7 +235,7 @@ async function openVehicleDetail(props) {
 }
 
 // --- VÝBĚR Z VÍCE ENTIT ---
-function showEntitySelection(features) {
+async function showEntitySelection(features) {
     panelBody.style.padding = '15px';
     panelBody.style.overflowY = 'auto';
     panelBody.style.display = 'block';
@@ -245,6 +245,27 @@ function showEntitySelection(features) {
     detailPanel.style.display = "flex";
     detailPanel.classList.add('open');
 
+    // Zobrazíme načítání, protože si teď sáhneme pro přesné detaily všech spojů ve shluku
+    panelBody.innerHTML = `<div style="color: #aaa; text-align: center; padding: 30px 10px;">Zjišťuji přesné trasy a směry spojů...</div>`;
+
+    // Paralelně stáhneme detailní informace o všech spojích v clusteru (max 20)
+    const detailedFeatures = await Promise.all(features.map(async (f) => {
+        const props = f.properties;
+        let parsedAttributes = null;
+        if (props.attributes) {
+            try { parsedAttributes = typeof props.attributes === 'string' ? JSON.parse(props.attributes) : props.attributes; } 
+            catch (e) { parsedAttributes = props.attributes; }
+        }
+
+        const providerObj = providers.find(p => p.providerName === props.provider);
+        let details = null;
+        if (providerObj && providerObj.getDetails) {
+            // Zavoláme tu samou chytrou funkci jako při kliknutí na samotný spoj
+            details = await providerObj.getDetails(props.id, parsedAttributes);
+        }
+        return { feature: f, details: details };
+    }));
+
     let html = `
         <div style="color: #aaa; margin-bottom: 15px; font-size: 13px;">
             V označené oblasti bylo nalezeno <b>${features.length}</b> spojů. Vyberte si jeden:
@@ -252,15 +273,29 @@ function showEntitySelection(features) {
         <div class="selection-list" style="display: flex; flex-direction: column; gap: 10px;">
     `;
 
-    features.forEach((f, idx) => {
-        const props = f.properties;
-        let label = props.route;
+    // Vykreslení seznamu s finálními, parsovanými daty
+    detailedFeatures.forEach((item, idx) => {
+        const props = item.feature.properties;
+        const d = item.details;
         
-        // Formát PIDu (Linka/Spoj)
-        if (props.provider === 'PID') {
-            const idParts = props.id.split('_');
-            if (idParts.length >= 3) {
-                label = `${props.route}/${idParts[2]}`;
+        // Výchozí hodnoty (kdyby náhodou selhalo stažení detailu)
+        let label = props.route;
+        let direction = props.headsign;
+
+        // Uplatnění logiky přesně podle tvých požadavků, pokud máme detail!
+        if (d) {
+            // Jak u PIDu tak u GRAPPu obsahuje "d.route" přesný tvar linky (např. 135/10 nebo Os 1234)
+            label = d.route; 
+            // A "d.destination" obsahuje ten finální, přesně zparsovaný směr
+            direction = d.destination; 
+        } else {
+            // Bezpečnostní fallback
+            if (props.provider === 'PID') {
+                const idParts = props.id.split('_');
+                if (idParts.length >= 3) label = `${props.route}/${idParts[2]}`;
+            } else if (props.provider === 'GRAPP') {
+                label = props.headsign;
+                direction = 'Směr nezjištěn';
             }
         }
 
@@ -272,7 +307,7 @@ function showEntitySelection(features) {
                     Linka: ${label} <span style="font-weight: normal; color: #888; font-size: 12px; margin-left: 5px;">(${props.provider})</span>
                 </div>
                 <div style="color: #bbb; font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">
-                    Směr: ${props.headsign}
+                    Směr: ${direction}
                 </div>
             </div>
         `;
@@ -281,6 +316,7 @@ function showEntitySelection(features) {
     html += '</div>';
     panelBody.innerHTML = html;
 
+    // Navěšení události kliknutí na nově vygenerované položky
     const items = panelBody.querySelectorAll('.selection-item');
     items.forEach(item => {
         item.addEventListener('click', () => {
