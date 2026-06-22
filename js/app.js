@@ -156,7 +156,6 @@ map.on('load', () => {
 async function openVehicleDetail(props) {
     map.getSource('selected-route').setData({ type: 'Feature', geometry: { type: 'LineString', coordinates: [] } });
 
-    // Obnova výchozího scrollování panelu (pro případ, že byl předtím otevřený JŘ)
     panelBody.style.padding = '15px';
     panelBody.style.overflowY = 'auto';
     panelBody.style.display = 'block';
@@ -166,11 +165,18 @@ async function openVehicleDetail(props) {
     detailPanel.style.display = "flex";
     setTimeout(() => detailPanel.classList.add('open'), 10); 
 
+    // DEKÓDOVÁNÍ ATRIBUTŮ Z MAPY
+    let parsedAttributes = null;
+    if (props.attributes) {
+        try { parsedAttributes = JSON.parse(props.attributes); } catch (e) { parsedAttributes = props.attributes; }
+    }
+
     const providerObj = providers.find(p => p.providerName === props.provider);
     if (providerObj) {
+        // TADY SE KONEČNĚ PŘEDÁVAJÍ parsedAttributes DO PIDU!
         const [details, routeCoordinates] = await Promise.all([
-            providerObj.getDetails ? providerObj.getDetails(props.id) : null,
-            providerObj.getRouteInfo ? providerObj.getRouteInfo(props.id) : null
+            providerObj.getDetails ? providerObj.getDetails(props.id, parsedAttributes) : null,
+            providerObj.getRouteInfo ? providerObj.getRouteInfo(props.id, parsedAttributes) : null
         ]);
         
         if (routeCoordinates && routeCoordinates.length > 0) {
@@ -385,7 +391,14 @@ async function updateData() {
             .filter(v => v.lat !== undefined && v.lon !== undefined && v.lat !== null && v.lon !== null)
             .map(v => {
                 const iconId = getOrCreateIcon(map, v.provider, v.route, v.heading);
-                return { type: 'Feature', geometry: { type: 'Point', coordinates: [v.lon, v.lat] }, properties: { ...v, iconId: iconId } };
+                
+                // SCHOVÁNÍ ATRIBUTŮ DO TEXTU PŘED VLOŽENÍM DO MAPY
+                const safeProps = { ...v, iconId: iconId };
+                if (safeProps.attributes) {
+                    safeProps.attributes = JSON.stringify(safeProps.attributes);
+                }
+
+                return { type: 'Feature', geometry: { type: 'Point', coordinates: [v.lon, v.lat] }, properties: safeProps };
             });
 
         map.getSource('vehicles').setData({ type: 'FeatureCollection', features });
