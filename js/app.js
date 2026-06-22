@@ -1,11 +1,13 @@
 import Deduplicator from './Deduplicator.js';
 import GrappProvider from './providers/GrappProvider.js';
 import PidProvider from './providers/PidProvider.js';
+import IdsJmkProvider from './providers/IdsJmkProvider.js';
 
 const deduplicator = new Deduplicator();
 const providers = [
     new GrappProvider(),
-    new PidProvider()
+    new PidProvider(),
+    new IdsJmkProvider()
 ];
 
 const statusDiv = document.getElementById('status');
@@ -99,6 +101,7 @@ function getOrCreateIcon(map, provider, routeText, heading) {
     let fillColor = '#7f8c8d';
     if (provider === 'GRAPP') fillColor = '#800000';
     if (provider === 'PID') fillColor = '#f76f74';
+    if (provider === 'IDS JMK') fillColor = '#2980b9';
 
     ctx.save();
     if (!isCircle) {
