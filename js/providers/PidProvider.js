@@ -22,7 +22,7 @@ export default class PidProvider extends BaseProvider {
     async getDetails(globalId, attributes) {
         if (!attributes) return null;
 
-        // 1. ZÁCHRANNÁ SÍŤ (Fallback): Vyplníme data z toho, co už víme
+        // 1. ZÁCHRANNÁ SÍŤ (Fallback)
         let route = attributes.route || '?';
         let destination = attributes.headsign || '?';
         let stop = 'Zjišťuji...';
@@ -31,7 +31,15 @@ export default class PidProvider extends BaseProvider {
         let carrier = 'PID';
         let isNAD = false;
 
-        // 2. STÁHNUTÍ REÁLNÝCH DETAILŮ Z API (Pokud máme ID vozidla)
+        // Proměnná pro detekci vozu, který ještě nevyjel
+        let isWaiting = (attributes.inactive === true || attributes.statePosition === 'before_track');
+
+        // Pokud vůz čeká na konečné, UI zobrazí automaticky "Bez zpoždění"
+        if (isWaiting) {
+            delay = '0 min'; 
+        }
+
+        // 2. STÁHNUTÍ DETAILŮ Z API A PRECIZNÍ PARSOVÁNÍ HTML
         if (attributes.vehicle !== undefined && attributes.routeType !== undefined) {
             const url = `${this.detailUrl}?route_type=${attributes.routeType}&vehicle=${attributes.vehicle}`;
             try {
@@ -42,23 +50,69 @@ export default class PidProvider extends BaseProvider {
                     if (data && data.infowindow_content) {
                         const doc = new DOMParser().parseFromString(data.infowindow_content, 'text/html');
 
-                        // Poslední zastávka
+                        // CÍLOVÁ STANICE
+                        const headsignDiv = doc.querySelector('.headsign');
+                        if (headsignDiv) destination = headsignDiv.textContent.trim();
+
+                        // DOPRAVCE A PŘESNÁ LINKA/SPOJ
+                        const operatorTds = doc.querySelectorAll('td.operator');
+                        if (operatorTds.length > 0) {
+                            carrier = operatorTds[0].textContent.replace(/\n/g, '').trim().split(/\s{2,}/)[0];
+                        }
+                        operatorTds.forEach(td => {
+                            const text = td.textContent.replace(/\n/g, '').trim();
+                            if (text.includes(' na ')) {
+                                const parts = text.split(' na ');
+                                if (parts.length > 1) {
+                                    route = parts[1].trim(); 
+                                }
+                            }
+                        });
+
+                        // VÝCHOZÍ ZASTÁVKA (Načteme si ji pro jistotu vždy)
+                        let fromStop = null;
+                        const fromStopRow = doc.querySelector('.fromStopName');
+                        if (fromStopRow) {
+                            const tds = fromStopRow.querySelectorAll('td');
+                            if (tds.length >= 2) fromStop = tds[1].textContent.trim();
+                        }
+
+                        // POSLEDNÍ PROJETÁ ZASTÁVKA
+                        let currentStop = null;
                         const currentStopRow = doc.querySelector('.currentStop');
                         if (currentStopRow) {
                             const tds = currentStopRow.querySelectorAll('td');
-                            if (tds.length >= 2) stop = tds[1].textContent.trim();
+                            if (tds.length >= 2) currentStop = tds[1].textContent.trim();
                         }
 
-                        // Zpoždění (často obsahuje &nbsp; což je \u00A0 v textContent)
-                        const delaySpan = doc.querySelector('.currentDelay span');
-                        if (delaySpan) {
-                            delay = delaySpan.textContent.replace(/\u00A0/g, ' ').replace('min.', 'min').trim();
+                        // --- LOGIKA PRO URČENÍ ZOBRAZENÉ ZASTÁVKY ---
+                        if (isWaiting && fromStop) {
+                            // 1. Pokud vůz ještě nevyjel, vezmeme Výchozí zastávku
+                            stop = fromStop;
+                        } else if (currentStop) {
+                            // 2. Pokud je na cestě, vezmeme Poslední projetou zastávku
+                            stop = currentStop;
+                        } else if (fromStop) {
+                            // 3. Extrémní záloha, pokud by currentStop chybělo
+                            stop = fromStop;
+                        } else {
+                            stop = 'Neznámá';
                         }
 
-                        // Dopravce
-                        const operatorTd = doc.querySelector('td.operator');
-                        if (operatorTd) {
-                            carrier = operatorTd.textContent.replace(/\n/g, '').trim().split(/\s{2,}/)[0];
+                        // ZPOŽDĚNÍ / NÁSKOK
+                        const currentDelayDiv = doc.querySelector('.currentDelay');
+                        if (currentDelayDiv) {
+                            if (currentDelayDiv.classList.contains('inactive')) {
+                                delay = '0 min'; 
+                            } else {
+                                const delaySpan = currentDelayDiv.querySelector('span');
+                                if (delaySpan) {
+                                    let delayRaw = delaySpan.textContent.replace(/\u00A0/g, '').replace('min.', '').replace(/\s+/g, '');
+                                    if (delayRaw !== '') {
+                                        delay = delayRaw + ' min';
+                                    }
+                                }
+                            }
                         }
                     }
                 }
@@ -67,7 +121,6 @@ export default class PidProvider extends BaseProvider {
             }
         }
 
-        // Pokud detailní API selhalo, "stop" zůstane "Zjišťuji...", ale UI nespadne
         return { route, destination, stop, delay, carrier, isNAD };
     }
 
@@ -108,9 +161,14 @@ export default class PidProvider extends BaseProvider {
         const vehicles = [];
         
         for (const trip of rawData.trips) {
-            if (trip.routeType === 2) continue;
+            if (trip.routeType === 2) continue; // Zahazujeme vlaky
 
-            const heading = (trip.bearing !== undefined && trip.bearing !== null) ? trip.bearing : null;
+            // Vozy čekající na konečné (inactive) dostanou kroužek
+            let heading = (trip.bearing !== undefined && trip.bearing !== null) ? trip.bearing : null;
+            if (trip.inactive === true || trip.statePosition === 'before_track') {
+                heading = null; 
+            }
+
             const headsign = trip.headsign || 'Neznámý cíl';
 
             vehicles.push({
