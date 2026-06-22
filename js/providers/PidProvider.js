@@ -152,7 +152,7 @@ export default class PidProvider extends BaseProvider {
             const rows = doc.querySelectorAll('table.timetable tbody tr');
             const stops = [];
 
-            // --- INTELIGENTNÍ ZAOKROUHLOVÁNÍ ČASU S NOVÝM PRAVIDLEM (od 46 nahoru) ---
+            // Inteligentní zaokrouhlování času (od 46 nahoru)
             const roundTime = (timeStr) => {
                 if (!timeStr) return null;
                 const parts = timeStr.split(':');
@@ -161,7 +161,6 @@ export default class PidProvider extends BaseProvider {
                     let m = parseInt(parts[1], 10);
                     let s = parseInt(parts[2], 10);
                     
-                    // Od 46 vteřin nahoru přičteme celou minutu, do 45 vteřin zahazujeme (dolu)
                     if (s >= 46) {
                         m += 1;
                         if (m >= 60) { 
@@ -176,19 +175,20 @@ export default class PidProvider extends BaseProvider {
                 return timeStr;
             };
 
-            rows.forEach((row, index) => {
-                const tds = row.querySelectorAll('td');
-                if (tds.length < 4) return;
-                
-                const stationName = tds[1].textContent.trim();
-                let plannedRaw = tds[2].textContent.replace(/[()]/g, '').trim(); 
-                let actualRaw = tds[3].textContent.trim();
-                
-                // Zpracování a zaokrouhlení obou časů
+            // Nová funkce pro vytažení a rozdělení všech časů (<br>)
+            const extractTimes = (td) => {
+                // Rozdělí obsah podle značky <br> a očistí ho od HTML značek (např. <span>) a závorek
+                return td.innerHTML.split(/<br\s*\/?>/i).map(str => {
+                    return str.replace(/<[^>]*>/g, '').replace(/[()]/g, '').trim();
+                }).filter(t => t);
+            };
+
+            // Vytvoříme samostatný blok pro každý nalezený čas
+            const createBlock = (plannedRaw, actualRaw) => {
                 let planned = roundTime(plannedRaw);
                 let actual = roundTime(actualRaw);
 
-                // --- MATEMATICKÝ VÝPOČET PRO CHYBĚJÍCÍ ČASY ---
+                // Matematický výpočet pro chybějící časy
                 if (!actual && planned) {
                     let delayS = attributes.delay || 0;
                     let isWait = (attributes.inactive === true || attributes.statePosition === 'before_track');
@@ -208,37 +208,50 @@ export default class PidProvider extends BaseProvider {
                     actual = `${aH}:${aM}`;
                 }
 
-                // --- URČENÍ BARVY ČASU ---
-                const parseBlock = () => {
-                    let color = '#58d68d'; 
+                // Určení barvy podle odchylky
+                let color = '#58d68d'; 
+                if (actual && planned) {
+                    let aMins = parseInt(actual.split(':')[0])*60 + parseInt(actual.split(':')[1]);
+                    let pMins = parseInt(planned.split(':')[0])*60 + parseInt(planned.split(':')[1]);
+                    let diff = aMins - pMins;
                     
-                    if (actual && planned) {
-                        let aMins = parseInt(actual.split(':')[0])*60 + parseInt(actual.split(':')[1]);
-                        let pMins = parseInt(planned.split(':')[0])*60 + parseInt(planned.split(':')[1]);
-                        let diff = aMins - pMins;
-                        
-                        if (diff < -12*60) diff += 24*60; 
-                        if (diff > 12*60) diff -= 24*60;  
-                        
-                        if (diff < 0) color = '#bada55'; 
-                        else if (diff <= 5) color = '#58d68d'; 
-                        else if (diff <= 15) color = '#f39c12'; 
-                        else color = '#e74c3c'; 
-                    }
-                    return { actual, planned, color };
-                };
+                    if (diff < -12*60) diff += 24*60; 
+                    if (diff > 12*60) diff -= 24*60;  
+                    
+                    if (diff < 0) color = '#bada55'; 
+                    else if (diff <= 5) color = '#58d68d'; 
+                    else if (diff <= 15) color = '#f39c12'; 
+                    else color = '#e74c3c'; 
+                }
+                return { actual, planned, color };
+            };
 
-                const timeObj = parseBlock();
+            rows.forEach((row, index) => {
+                const tds = row.querySelectorAll('td');
+                if (tds.length < 4) return;
+                
+                const stationName = tds[1].textContent.trim();
+                const pTimes = extractTimes(tds[2]); // Pole např. ["17:19", "17:21"]
+                const aTimes = extractTimes(tds[3]); // Pole např. ["17:19:12", "17:22:14"]
+
                 let arrival = null;
                 let departure = null;
 
-                if (index === 0) {
-                    departure = timeObj;
-                } else if (index === rows.length - 1) {
-                    arrival = timeObj;
+                if (pTimes.length >= 2) {
+                    // Mimořádný případ: Stanice má dva časy (Příjezd a Odjezd rozdělený <br>)
+                    arrival = createBlock(pTimes[0], aTimes[0]);
+                    departure = createBlock(pTimes[1], aTimes[1]);
                 } else {
-                    arrival = timeObj;
-                    departure = timeObj;
+                    // Klasický případ: Stanice má jeden společný čas
+                    const singleBlock = createBlock(pTimes[0], aTimes[0]);
+                    if (index === 0) {
+                        departure = singleBlock;
+                    } else if (index === rows.length - 1) {
+                        arrival = singleBlock;
+                    } else {
+                        arrival = singleBlock;
+                        departure = singleBlock;
+                    }
                 }
 
                 stops.push({
