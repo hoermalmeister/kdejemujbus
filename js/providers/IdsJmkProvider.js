@@ -33,7 +33,43 @@ export default class IdsJmkProvider extends BaseProvider {
         let route = routeId ? `${routeLine}/${routeId}` : routeLine;
 
         let destination = attributes.FinalStopName || '?';
-        let stop = attributes.LastStopName || (attributes.LastStopID ? `Zastávka ID: ${attributes.LastStopID}` : 'Na trase...');
+        
+        let lastKnownName = attributes.LastStopName;
+        let isFallback = false;
+
+        // KOUZLO: Pokud Můstek neposlal jméno (ID je technický waypoint), najdeme poslední známou
+        if (!lastKnownName && attributes.LastStopID) {
+            try {
+                const url = `${this.timetableUrl}?serviceid=${attributes.ServiceId}&lineid=${attributes.LineID}&routeid=${attributes.RouteID}`;
+                const res = await fetch(url);
+                const ttData = await res.json();
+                
+                if (ttData && ttData.Routes && ttData.Routes.length > 0) {
+                    const allStops = ttData.Routes[0].Stops;
+                    const currentIndex = allStops.findIndex(s => s.StopId == attributes.LastStopID);
+                    
+                    if (currentIndex !== -1) {
+                        // Jdeme v jízdním řádu dozadu a hledáme první opravdovou zastávku (IsKnown)
+                        for (let i = currentIndex - 1; i >= 0; i--) {
+                            if (allStops[i].IsKnown) {
+                                lastKnownName = allStops[i].StopName;
+                                isFallback = true;
+                                break;
+                            }
+                        }
+                    }
+                }
+            } catch (e) {
+                console.warn("Nepodařilo se načíst JŘ pro zjištění fallback zastávky");
+            }
+        }
+
+        let stop = '...';
+        if (lastKnownName) {
+            stop = isFallback ? `${lastKnownName}` : lastKnownName;
+        } else if (attributes.LastStopID) {
+            stop = `Waypoint ID: ${attributes.LastStopID}`; 
+        }
 
         let delayNum = attributes.Delay || 0;
         let delay = delayNum === 0 ? '0 min' : `${delayNum} min`;
@@ -41,8 +77,8 @@ export default class IdsJmkProvider extends BaseProvider {
         let isWaiting = attributes.IsInactive === true;
         if (isWaiting) {
             delay = '0 min'; 
-            if (attributes.LastStopName) stop = `Výchozí zastávka: ${attributes.LastStopName}`;
-            else stop = 'Čeká na výchozí zastávce';
+            if (lastKnownName) stop = `${lastKnownName}`;
+            else stop = '...';
         }
 
         return { route, destination, stop, delay, carrier: 'IDS JMK', isNAD: false };
@@ -62,7 +98,6 @@ export default class IdsJmkProvider extends BaseProvider {
             data.Stops.forEach(stop => {
                 if (stop.Path) {
                     stop.Path.forEach(pt => {
-                        // API vrací [lat, lon], MapLibre vyžaduje [lon, lat] - musíme to otočit
                         coords.push([pt[1], pt[0]]);
                     });
                 }
@@ -84,13 +119,11 @@ export default class IdsJmkProvider extends BaseProvider {
             const stops = [];
             const delayMins = attributes.Delay || 0;
             
-            // Barvy naprosto přesně jako v PID
             let color = '#58d68d';
             if (delayMins > 15) color = '#e74c3c';
             else if (delayMins > 5) color = '#f39c12';
             else if (delayMins < 0) color = '#bada55';
 
-            // Převodník minut od půlnoci na krásný čas HH:MM
             const formatTime = (mins) => {
                 if (mins === null || mins === undefined) return null;
                 let h = Math.floor(mins / 60) % 24;
@@ -100,7 +133,10 @@ export default class IdsJmkProvider extends BaseProvider {
 
             const rawStops = data.Routes[0].Stops;
             
-            rawStops.forEach((stop, index) => {
+            // ODŘÍZNUTÍ WAYPOINTŮ: Do tabulky pustíme jen ty zastávky, které prošly GTFS slovníkem
+            const knownStops = rawStops.filter(s => s.IsKnown === true);
+            
+            knownStops.forEach((stop, index) => {
                 const pArr = formatTime(stop.ArrivalTime);
                 const pDep = formatTime(stop.Time);
                 const aArr = formatTime(stop.ArrivalTime + delayMins);
@@ -114,7 +150,7 @@ export default class IdsJmkProvider extends BaseProvider {
 
                 if (index === 0) {
                     departure = depBlock;
-                } else if (index === rawStops.length - 1) {
+                } else if (index === knownStops.length - 1) {
                     arrival = arrBlock;
                 } else {
                     arrival = arrBlock;
