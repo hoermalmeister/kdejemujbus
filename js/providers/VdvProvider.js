@@ -8,7 +8,6 @@ export default class VdvProvider extends BaseProvider {
 
     async fetchData() {
         try {
-            // Jeden dotaz za 15s přes corsproxy.io projde naprosto hladce
             const targetUrl = `https://mapavdv.kr-vysocina.cz/Ajax/GetPoints?t=${Date.now()}`;
             const proxyUrl = `https://corsproxy.io/?${encodeURIComponent(targetUrl)}`;
 
@@ -43,7 +42,6 @@ export default class VdvProvider extends BaseProvider {
         let timetableRoute = fullText;
 
         try {
-            // Načtení detailu až při reálném kliknutí uživatele
             const targetUrl = `https://mapavdv.kr-vysocina.cz/Ajax/OpenInfoWindow?id=${attributes.id}&t=${Date.now()}`;
             const proxyUrl = `https://corsproxy.io/?${encodeURIComponent(targetUrl)}`;
 
@@ -54,19 +52,22 @@ export default class VdvProvider extends BaseProvider {
                 
                 let exSpoj = null;
                 const trs = doc.querySelectorAll('tr');
+                
                 trs.forEach(tr => {
                     const th = tr.querySelector('th');
                     const td = tr.querySelector('td');
                     if (th && td) {
-                        const key = th.textContent.trim();
+                        // NEPRŮSTŘELNÁ KONTROLA: Vše na malá písmena, ignorujeme přesnou diakritiku a mezery
+                        const key = th.textContent.toLowerCase();
                         const val = td.textContent.trim();
                         
-                        if (key === 'Linka') fullText = val;
-                        if (key === 'Spoj') exSpoj = val;
-                        if (key === 'Zastávka') stop = val;
-                        if (key === 'Zpoždění') {
-                            if (val.toLowerCase().includes('včas') || val === '0 min.') delayText = '0 min';
-                            else {
+                        if (key.includes('linka')) fullText = val;
+                        if (key.includes('spoj')) exSpoj = val;
+                        if (key.includes('zast')) stop = val;
+                        if (key.includes('zpo')) {
+                            if (val.toLowerCase().includes('včas') || val.includes('0 min')) {
+                                delayText = '0 min';
+                            } else {
                                 let parsed = parseInt(val);
                                 if (!isNaN(parsed)) delayText = parsed > 0 ? `+${parsed} min` : `${parsed} min`;
                             }
@@ -92,7 +93,6 @@ export default class VdvProvider extends BaseProvider {
     async getTimetable(globalId, attributes) {
         if (!attributes || attributes.id === undefined) return null;
 
-        // Načtení jízdního řádu přes corsproxy až po kliknutí na tlačítko
         const targetUrl = `https://mapavdv.kr-vysocina.cz/Ajax/GetTimetable?vehicleNumber=${attributes.id}&currentStopId=0&t=${Date.now()}`;
         const proxyUrl = `https://corsproxy.io/?${encodeURIComponent(targetUrl)}`;
 
