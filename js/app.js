@@ -2,12 +2,14 @@ import Deduplicator from './Deduplicator.js';
 import GrappProvider from './providers/GrappProvider.js';
 import PidProvider from './providers/PidProvider.js';
 import IdsJmkProvider from './providers/IdsJmkProvider.js';
+import VdvProvider from './providers/VdvProvider.js';
 
 const deduplicator = new Deduplicator();
 const providers = [
     new GrappProvider(),
     new PidProvider(),
-    new IdsJmkProvider()
+    new IdsJmkProvider(),
+    new VdvProvider()
 ];
 
 const statusDiv = document.getElementById('status');
@@ -33,9 +35,10 @@ let activeTrainData = { props: null, details: null, timetable: null };
 // --- CENTRÁLNÍ DEFINICE BAREV PRO POSKYTOVATELE ---
 function getProviderColor(provider) {
     if (provider === 'GRAPP') return '#800000';
-    if (provider === 'PID') return '#f76f74';
-    if (provider === 'IDS JMK') return '#a4d783'; // Jarní zeleň IDS JMK
-    return '#7f8c8d'; // Výchozí
+    if (provider === 'PID') return '#d40000';
+    if (provider === 'IDS JMK') return '#4ab95d';
+    if (provider === 'VDV') return '#0000ff';
+    return '#ff8080'; // Výchozí
 }
 
 // --- INICIALIZACE MAPY ---
@@ -526,6 +529,15 @@ async function updateData() {
         const results = await Promise.allSettled(fetchPromises);
         let allVehicles = [];
         results.forEach((result) => { if (result.status === 'fulfilled') allVehicles = allVehicles.concat(result.value); });
+
+        const pidLines = new Set(allVehicles.filter(v => v.provider === 'PID').map(v => v.route));
+        allVehicles = allVehicles.filter(v => {
+            if (v.provider === 'VDV') {
+                // Pokud linku s tímto číslem už monitoruje PID, z VDV ji nemilosrdně smažeme
+                if (pidLines.has(v.route)) return false; 
+            }
+            return true;
+        });
         
         deduplicator.processData(allVehicles);
         const cleanData = deduplicator.getCleanData();
@@ -533,9 +545,11 @@ async function updateData() {
         // Řazení, aby GRAPP byl úplně nahoře
         const sortedData = cleanData.sort((a, b) => {
             const getZIndex = (p) => {
-                if (p === 'GRAPP') return 3;
-                if (p === 'IDS JMK') return 2;
-                return 1; 
+                if (p === 'GRAPP') return 4;
+                if (p === 'IDS JMK') return 3;
+                if (p === 'PID') return 2;
+                if (p === 'VDV') return 1;
+                return 0; 
             };
             return getZIndex(a.provider) - getZIndex(b.provider);
         });
