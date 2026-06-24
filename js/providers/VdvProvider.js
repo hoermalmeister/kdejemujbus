@@ -4,7 +4,6 @@ export default class VdvProvider extends BaseProvider {
     constructor() {
         super();
         this.providerName = 'VDV';
-        // Tvoje vlastní stabilní architektura!
         this.apiUrl = 'https://grapp-bridge.onrender.com/vdv';
         this.detailUrl = 'https://grapp-bridge.onrender.com/vdv/detail?id=';
         this.timetableUrl = 'https://grapp-bridge.onrender.com/vdv/timetable?id=';
@@ -36,14 +35,19 @@ export default class VdvProvider extends BaseProvider {
         
         let delayNum = attributes.delay;
         let delayText = '0 min';
-        if (delayNum === -2147483648) delayText = 'Neznámé';
-        else if (delayNum !== 0) delayText = delayNum > 0 ? `+${delayNum} min` : `${delayNum} min`;
+        
+        if (delayNum === -2147483648) {
+            delayText = 'Neznámé';
+            delayNum = 0;
+        } else if (delayNum !== 0) {
+            // Zrušeno generování +, app.js si ho přidá samo (prevence ++5 min)
+            delayText = `${delayNum} min`;
+        }
 
         let route = shortRoute;
         let timetableRoute = fullText;
 
         try {
-            // Pálíme dotaz čistě na tvůj server
             const res = await fetch(`${this.detailUrl}${attributes.id}`);
             if (res.ok) {
                 const html = await res.text();
@@ -65,9 +69,13 @@ export default class VdvProvider extends BaseProvider {
                         if (key.includes('zpo')) {
                             if (val.toLowerCase().includes('včas') || val.includes('0 min')) {
                                 delayText = '0 min';
+                                delayNum = 0;
                             } else {
                                 let parsed = parseInt(val);
-                                if (!isNaN(parsed)) delayText = parsed > 0 ? `+${parsed} min` : `${parsed} min`;
+                                if (!isNaN(parsed)) {
+                                    delayNum = parsed;
+                                    delayText = `${parsed} min`; // Zrušeno +
+                                }
                             }
                         }
                     }
@@ -83,7 +91,42 @@ export default class VdvProvider extends BaseProvider {
             console.warn("VDV Detail selhal, použiji základní atributy.");
         }
 
-        return { route, timetableRoute, destination, stop, delay: delayText, carrier: 'VDV Vysočina', isNAD: false };
+        // ====================================================================
+        // INTELIGENTNÍ LOGIKA ZPOŽDĚNÍ
+        // ====================================================================
+
+        // 1. ZÁPORNÉ ZPOŽDĚNÍ NA VÝCHOZÍ STANICI (Automatické načtení JŘ)
+        if (delayNum < 0) {
+            const tt = await this.getTimetable(globalId, attributes);
+            if (tt && tt.length > 0) {
+                const firstStation = tt[0].station;
+                if (stop.toLowerCase() === firstStation.toLowerCase()) {
+                    delayNum = 0;
+                    delayText = '0 min';
+                    attributes.delay = 0; // Propíše se nula i do tabulky JŘ
+                }
+            }
+        }
+
+        // 2. JSME V CÍLOVÉ STANICI?
+        let isAtDestination = false;
+        if (stop !== 'Na trase...' && destination !== 'Neznámý cíl' && stop.toLowerCase() === destination.toLowerCase()) {
+            delayText = 'V cíli';
+            delayNum = 0;
+            attributes.delay = 0; // Jízdní řád se tváří, že zpoždění není
+            isAtDestination = true;
+        }
+
+        return { 
+            route, 
+            timetableRoute, 
+            destination, 
+            stop, 
+            delay: delayText, 
+            carrier: 'VDV Vysočina', 
+            isNAD: false,
+            isAtDestination // Předáváme instrukci pro app.js
+        };
     }
 
     async getRouteInfo() { return null; }
@@ -92,7 +135,6 @@ export default class VdvProvider extends BaseProvider {
         if (!attributes || attributes.id === undefined) return null;
 
         try {
-            // Pálíme dotaz na tvůj server
             const response = await fetch(`${this.timetableUrl}${attributes.id}`);
             if (!response.ok) return null;
             
@@ -102,6 +144,7 @@ export default class VdvProvider extends BaseProvider {
             if (!rows || rows.length === 0) return null;
 
             const stops = [];
+            // Delay už může být opraveno (na 0) v getDetails
             let delayMins = (attributes.delay !== undefined && attributes.delay !== -2147483648) ? attributes.delay : 0;
 
             let color = '#58d68d';
@@ -167,7 +210,6 @@ export default class VdvProvider extends BaseProvider {
             if (headsign.includes('N/a')) headsign = 'Neznámý cíl';
             
             let shortRoute = trip.text.slice(-3);
-
             let vehicleHeading = (trip.heading !== undefined && trip.heading !== null) ? Math.round(trip.heading) : null;
 
             vehicles.push({
@@ -175,7 +217,7 @@ export default class VdvProvider extends BaseProvider {
                 provider: this.providerName,
                 lat: trip.lat,
                 lon: trip.lng,
-                heading: vehicleHeading, // <--- Sem se teď přiřadí vypočítaný úhel!
+                heading: vehicleHeading, 
                 route: shortRoute,
                 headsign: headsign,
                 globalMatchId: `vdv_${trip.text}_${trip.id}`,
