@@ -349,7 +349,7 @@ function renderDetailView() {
 
     const d = activeTrainData.details;
 
-    let titleHtml = `${d.route}`;
+    let titleHtml = `${d.route}`; // <--- Sem se teď automaticky propíše dlouhý Linkospoj!
     if (d.isNAD) {
         titleHtml += ` <span style="font-size: 11px; background: #e74c3c; color: white; padding: 2px 6px; border-radius: 4px; margin-left: 8px; vertical-align: middle; font-weight: bold;">Náhradní doprava</span>`;
     } else if (d.isOdklon) {
@@ -370,16 +370,9 @@ function renderDetailView() {
         else if (minVal > 5) delayColor = '#f39c12';
         delayText = '+' + d.delay;
     }
-
-    // KOUZLO: Řádek "Spoj" se vygeneruje jen tehdy, když máme specifičtější název než v nadpisu
-    let extraSpojRow = '';
-    if (d.timetableRoute && d.timetableRoute !== d.route) {
-        extraSpojRow = `<tr><th>Spoj</th><td><strong style="color: #fff;">${d.timetableRoute}</strong></td></tr>`;
-    }
     
     panelBody.innerHTML = `
         <table class="vdv-table">
-            ${extraSpojRow}
             <tr><th>Směr</th><td>${d.destination}</td></tr>
             <tr><th>Zastávka</th><td>${d.stop}</td></tr>
             <tr><th>Zpoždění</th><td><b style="color:${delayColor};">${delayText}</b></td></tr>
