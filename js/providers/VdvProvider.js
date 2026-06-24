@@ -4,8 +4,8 @@ export default class VdvProvider extends BaseProvider {
     constructor() {
         super();
         this.providerName = 'VDV';
-        // API nemá CORS ochranu, můžeme z něj tahat data přímo prohlížečem!
-        this.apiUrl = 'https://mapavdv.kr-vysocina.cz/Ajax/GetPoints';
+        // Využití CORS proxy pro obejití blokace ze strany prohlížeče
+        this.apiUrl = 'https://corsproxy.io/?https://mapavdv.kr-vysocina.cz/Ajax/GetPoints';
     }
 
     async fetchData() {
@@ -24,7 +24,8 @@ export default class VdvProvider extends BaseProvider {
     async getDetails(globalId, attributes) {
         if (!attributes) return null;
 
-        let route = attributes.text || '?';
+        let fullText = attributes.text || '?';
+        let shortRoute = fullText.length >= 3 ? fullText.slice(-3) : fullText;
         
         // VDV často posílá u cílové stanice technické nesmysly typu "-1 N/a"
         let destination = attributes.finalStopName || '?';
@@ -42,12 +43,12 @@ export default class VdvProvider extends BaseProvider {
         }
 
         return {
-            route: route,
-            timetableRoute: route, 
+            route: shortRoute,            // Pro hlavní nadpis (např. 129)
+            timetableRoute: fullText,     // Pro tabulku detailu (např. 841129)
             destination: destination,
             stop: 'Poloha na trase (VDV neposílá zastávky)', 
             delay: delayText,
-            carrier: 'VDV Vysočina',
+            carrier: 'VDV',
             isNAD: false
         };
     }
@@ -64,7 +65,7 @@ export default class VdvProvider extends BaseProvider {
             // Ignorujeme vlaky
             if (trip.traction === "TRAIN") continue;
             
-            // Ignorujeme linky o 3 nebo méně znacích (zpravidla MHD)
+            // Ignorujeme linky o 3 nebo méně znacích (zpravidla MHD nebo technické vozy)
             if (!trip.text || trip.text.length <= 3) continue;
 
             // Ošetření chybných zpoždění z VDV API
@@ -74,14 +75,18 @@ export default class VdvProvider extends BaseProvider {
             let headsign = trip.finalStopName || 'Neznámý cíl';
             if (headsign.includes('N/a')) headsign = 'Neznámý cíl';
 
+            // Vyřízneme poslední 3 čísla pro mapové samolepky
+            let shortRoute = trip.text.slice(-3);
+
             vehicles.push({
                 id: `vdv_${trip.id}`,
                 provider: this.providerName,
                 lat: trip.lat,
                 lon: trip.lng,
                 heading: null, // Vždycky kroužek
-                route: trip.text,
+                route: shortRoute,
                 headsign: headsign,
+                // MatchID používá plné číslo kvůli globálnímu filtru proti PIDu v app.js
                 globalMatchId: `vdv_${trip.text}_${trip.id}`,
                 delay: delay,
                 attributes: { ...trip }
