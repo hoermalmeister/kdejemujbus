@@ -370,9 +370,16 @@ function renderDetailView() {
         else if (minVal > 5) delayColor = '#f39c12';
         delayText = '+' + d.delay;
     }
+
+    // KOUZLO: Řádek "Spoj" se vygeneruje jen tehdy, když máme specifičtější název než v nadpisu
+    let extraSpojRow = '';
+    if (d.timetableRoute && d.timetableRoute !== d.route) {
+        extraSpojRow = `<tr><th>Spoj</th><td><strong style="color: #fff;">${d.timetableRoute}</strong></td></tr>`;
+    }
     
     panelBody.innerHTML = `
         <table class="vdv-table">
+            ${extraSpojRow}
             <tr><th>Směr</th><td>${d.destination}</td></tr>
             <tr><th>Zastávka</th><td>${d.stop}</td></tr>
             <tr><th>Zpoždění</th><td><b style="color:${delayColor};">${delayText}</b></td></tr>
@@ -584,10 +591,6 @@ async function updateData() {
 
     } catch (err) { statusDiv.innerText = "Chyba při načítání dat."; }
 }
-
-// =========================================================
-// OVLÁDACÍ PRVKY Z VDV (Lokalizace a Kompas)
-// =========================================================
 
 const locateBtn = document.getElementById('locate-btn');
 let userLocationMarker = null;
