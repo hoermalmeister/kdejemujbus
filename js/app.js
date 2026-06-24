@@ -426,14 +426,19 @@ async function switchToTimetable() {
         delayText = '+' + d.delay;
     }
 
+    let linkospoj = d.route;
+    if (p.attributes && p.attributes.cisjrLine && p.attributes.cisjrTrip) {
+        linkospoj = `${p.attributes.cisjrLine}/${p.attributes.cisjrTrip}`;
+    }
+
     let htmlContent = `
-        <div class="tt-header" style="padding: 15px; margin: 0; background: #1e1e1e; border-bottom: 1px solid #333; z-index: 20;">
-            <button id="back-to-details-btn" class="tt-back-btn">Zpět</button>
-            <div class="tt-header-info">
-                <span style="margin-right:15px;">Linkospoj: <strong>${d.route}</strong></span>
-                Zpoždění: <strong class="delay-val" style="color: ${delayColor}">${delayText}</strong>
+            <div class="tt-header" style="padding: 15px; margin: 0; background: #1e1e1e; border-bottom: 1px solid #333; z-index: 20;">
+                <button id="back-to-details-btn" class="tt-back-btn">Zpět</button>
+                <div class="tt-header-info">
+                    <span style="margin-right:15px;">Linkospoj: <strong>${linkospoj}</strong></span>
+                    Zpoždění: <strong class="delay-val" style="color: ${delayColor}">${delayText}</strong>
+                </div>
             </div>
-        </div>
         <div id="tt-scroll-container" style="overflow-y: auto; flex-grow: 1; padding: 0 15px 15px 15px;">
             <table class="tt-table" style="position: relative;">
                 <thead style="position: sticky; top: 0; background: #1e1e1e; z-index: 10;">
