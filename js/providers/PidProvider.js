@@ -37,12 +37,13 @@ export default class PidProvider extends BaseProvider {
         const idParts = globalId.split('_');
         const runNum = idParts.length >= 3 ? idParts[2] : '';
         
-        // Klasická krátká linka pro mapu a nadpis panelu
+        // PŮVODNÍ CHOVÁNÍ (fallback): 194/11
         let route = runNum ? `${routeLine}/${runNum}` : routeLine;
 
-        let timetableRoute = (attributes.cisjrLine && attributes.cisjrTrip) 
-            ? `${attributes.cisjrLine}/${attributes.cisjrTrip}` 
-            : route;
+        // SPRÁVNÉ CHOVÁNÍ: Třímístná linka + CISJR spoj (194/1053)
+        if (attributes.cisjrTrip) {
+            route = `${routeLine}/${attributes.cisjrTrip}`;
+        }
 
         if (attributes.vehicle !== undefined && attributes.routeType !== undefined) {
             const url = `${this.detailUrl}?route_type=${attributes.routeType}&vehicle=${attributes.vehicle}`;
@@ -64,8 +65,12 @@ export default class PidProvider extends BaseProvider {
                             }
                         });
 
-                        route = runNum ? `${routeLine}/${runNum}` : routeLine;
-                        if (!attributes.cisjrLine) timetableRoute = route; 
+                        // Po upřesnění linky z HTML znovu sestavíme správný název
+                        if (attributes.cisjrTrip) {
+                            route = `${routeLine}/${attributes.cisjrTrip}`;
+                        } else {
+                            route = runNum ? `${routeLine}/${runNum}` : routeLine;
+                        }
 
                         const headsignDiv = doc.querySelector('.headsign');
                         if (headsignDiv) {
@@ -77,7 +82,6 @@ export default class PidProvider extends BaseProvider {
                             if (match) {
                                 destination = `${match[1].trim()} > ${match[3].trim()}`;
                                 route = `${route} > ${match[2].trim()}`; 
-                                if (!attributes.cisjrLine) timetableRoute = route;
                             } else {
                                 destination = destText;
                             }
@@ -118,7 +122,12 @@ export default class PidProvider extends BaseProvider {
             }
         }
 
-        // Musíme ji poslat ven, aby si ji app.js mohlo přečíst!
+        // Tímto pošleme do Jízdního řádu ten obrovský formát 100194/1053 (pokud jsi ho tam chtěl ukázat)
+        let timetableRoute = route; 
+        if (attributes.cisjrLine && attributes.cisjrTrip) {
+            timetableRoute = `${attributes.cisjrLine}/${attributes.cisjrTrip}`;
+        }
+
         return { route, timetableRoute, destination, stop, delay, carrier, isNAD };
     }
 
