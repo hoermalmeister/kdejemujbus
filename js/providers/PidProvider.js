@@ -39,6 +39,11 @@ export default class PidProvider extends BaseProvider {
         const runNum = idParts.length >= 3 ? idParts[2] : '';
         let route = runNum ? `${routeLine}/${runNum}` : routeLine;
 
+        // PRO JÍZDNÍ ŘÁD: Pokud máme data ze Spojenky (CISJR), ukážeme Linkospoj
+        let timetableRoute = (attributes.cisjrLine && attributes.cisjrTrip) 
+            ? `${attributes.cisjrLine}/${attributes.cisjrTrip}` 
+            : route;
+
         if (attributes.vehicle !== undefined && attributes.routeType !== undefined) {
             const url = `${this.detailUrl}?route_type=${attributes.routeType}&vehicle=${attributes.vehicle}`;
             try {
@@ -56,15 +61,13 @@ export default class PidProvider extends BaseProvider {
                                 const label = tds[0].textContent.trim();
                                 const val = tds[1].textContent.replace(/\n/g, '').trim();
                                 
-                                if (label === 'Dopravce:') {
-                                    carrier = val.split(/\s{2,}/)[0];
-                                } else if (label === 'Oběh:') {
-                                    routeLine = val.split('/')[0].trim();
-                                }
+                                if (label === 'Dopravce:') carrier = val.split(/\s{2,}/)[0];
+                                else if (label === 'Oběh:') routeLine = val.split('/')[0].trim();
                             }
                         });
 
                         route = runNum ? `${routeLine}/${runNum}` : routeLine;
+                        if (!attributes.cisjrLine) timetableRoute = route; 
 
                         const headsignDiv = doc.querySelector('.headsign');
                         if (headsignDiv) {
@@ -76,6 +79,7 @@ export default class PidProvider extends BaseProvider {
                             if (match) {
                                 destination = `${match[1].trim()} > ${match[3].trim()}`;
                                 route = `${route} > ${match[2].trim()}`; 
+                                if (!attributes.cisjrLine) timetableRoute = route;
                             } else {
                                 destination = destText;
                             }
@@ -101,26 +105,22 @@ export default class PidProvider extends BaseProvider {
                         else stop = 'Neznámá';
 
                         const currentDelayDiv = doc.querySelector('.currentDelay');
-                        if (currentDelayDiv) {
-                            if (currentDelayDiv.classList.contains('inactive')) {
-                                delay = '0 min'; 
-                            } else {
-                                const delaySpan = currentDelayDiv.querySelector('span');
-                                if (delaySpan) {
-                                    let delayRaw = delaySpan.textContent.replace(/\u00A0/g, '').replace('min.', '').replace(/\s+/g, '').toLowerCase();
-                                    if (delayRaw.includes('včas')) delay = '0 min';
-                                    else if (delayRaw !== '') delay = delayRaw + ' min';
-                                }
+                        if (currentDelayDiv && !currentDelayDiv.classList.contains('inactive')) {
+                            const delaySpan = currentDelayDiv.querySelector('span');
+                            if (delaySpan) {
+                                let delayRaw = delaySpan.textContent.replace(/\u00A0/g, '').replace('min.', '').replace(/\s+/g, '').toLowerCase();
+                                if (delayRaw.includes('včas')) delay = '0 min';
+                                else if (delayRaw !== '') delay = delayRaw + ' min';
                             }
                         }
                     }
                 }
             } catch (error) {
-                console.warn("PID Detail selhal, použije se fallback:", error);
+                console.warn("PID Detail selhal, použije se fallback.");
             }
         }
 
-        return { route, destination, stop, delay, carrier, isNAD };
+        return { route, timetableRoute, destination, stop, delay, carrier, isNAD };
     }
 
     async getRouteInfo(globalId, attributes) {
@@ -131,7 +131,6 @@ export default class PidProvider extends BaseProvider {
             const response = await fetch(url);
             const data = await response.json();
             if (!data || !data.shape || !Array.isArray(data.shape)) return null;
-            
             return data.shape.map(point => [point.lon, point.lat]);
         } catch (error) { return null; }
     }
@@ -152,7 +151,6 @@ export default class PidProvider extends BaseProvider {
             const rows = doc.querySelectorAll('table.timetable tbody tr');
             const stops = [];
 
-            // Inteligentní zaokrouhlování času (od 46 nahoru)
             const roundTime = (timeStr) => {
                 if (!timeStr) return null;
                 const parts = timeStr.split(':');
@@ -160,13 +158,9 @@ export default class PidProvider extends BaseProvider {
                     let h = parseInt(parts[0], 10);
                     let m = parseInt(parts[1], 10);
                     let s = parseInt(parts[2], 10);
-                    
                     if (s >= 46) {
                         m += 1;
-                        if (m >= 60) { 
-                            m = 0; 
-                            h = (h + 1) % 24; 
-                        }
+                        if (m >= 60) { m = 0; h = (h + 1) % 24; }
                     }
                     return `${h.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')}`;
                 } else if (parts.length === 2) {
@@ -175,27 +169,21 @@ export default class PidProvider extends BaseProvider {
                 return timeStr;
             };
 
-            // Nová funkce pro vytažení a rozdělení všech časů (<br>)
             const extractTimes = (td) => {
-                // Rozdělí obsah podle značky <br> a očistí ho od HTML značek (např. <span>) a závorek
                 return td.innerHTML.split(/<br\s*\/?>/i).map(str => {
                     return str.replace(/<[^>]*>/g, '').replace(/[()]/g, '').trim();
                 }).filter(t => t);
             };
 
-            // Vytvoříme samostatný blok pro každý nalezený čas
             const createBlock = (plannedRaw, actualRaw) => {
                 let planned = roundTime(plannedRaw);
                 let actual = roundTime(actualRaw);
 
-                // Matematický výpočet pro chybějící časy
                 if (!actual && planned) {
                     let delayS = attributes.delay || 0;
                     let isWait = (attributes.inactive === true || attributes.statePosition === 'before_track');
                     if (isWait) delayS = 0; 
-
                     let delayM = Math.round(delayS / 60);
-
                     let pParts = planned.split(':');
                     let pMins = parseInt(pParts[0], 10) * 60 + parseInt(pParts[1], 10);
                     let aMins = pMins + delayM;
@@ -208,7 +196,6 @@ export default class PidProvider extends BaseProvider {
                     actual = `${aH}:${aM}`;
                 }
 
-                // Určení barvy podle odchylky
                 let color = '#58d68d'; 
                 if (actual && planned) {
                     let aMins = parseInt(actual.split(':')[0])*60 + parseInt(actual.split(':')[1]);
@@ -231,36 +218,23 @@ export default class PidProvider extends BaseProvider {
                 if (tds.length < 4) return;
                 
                 const stationName = tds[1].textContent.trim();
-                const pTimes = extractTimes(tds[2]); // Pole např. ["17:19", "17:21"]
-                const aTimes = extractTimes(tds[3]); // Pole např. ["17:19:12", "17:22:14"]
+                const pTimes = extractTimes(tds[2]); 
+                const aTimes = extractTimes(tds[3]); 
 
                 let arrival = null;
                 let departure = null;
 
                 if (pTimes.length >= 2) {
-                    // Mimořádný případ: Stanice má dva časy (Příjezd a Odjezd rozdělený <br>)
                     arrival = createBlock(pTimes[0], aTimes[0]);
                     departure = createBlock(pTimes[1], aTimes[1]);
                 } else {
-                    // Klasický případ: Stanice má jeden společný čas
                     const singleBlock = createBlock(pTimes[0], aTimes[0]);
-                    if (index === 0) {
-                        departure = singleBlock;
-                    } else if (index === rows.length - 1) {
-                        arrival = singleBlock;
-                    } else {
-                        arrival = singleBlock;
-                        departure = singleBlock;
-                    }
+                    if (index === 0) departure = singleBlock;
+                    else if (index === rows.length - 1) arrival = singleBlock;
+                    else { arrival = singleBlock; departure = singleBlock; }
                 }
 
-                stops.push({
-                    station: stationName,
-                    isNAD: false,
-                    isPassing: false,
-                    arr: arrival,
-                    dep: departure
-                });
+                stops.push({ station: stationName, isNAD: false, isPassing: false, arr: arrival, dep: departure });
             });
 
             return stops;
@@ -275,11 +249,12 @@ export default class PidProvider extends BaseProvider {
             if (trip.routeType === 2) continue; 
 
             let heading = (trip.bearing !== undefined && trip.bearing !== null) ? trip.bearing : null;
-            if (trip.inactive === true || trip.statePosition === 'before_track') {
-                heading = null; 
-            }
+            if (trip.inactive === true || trip.statePosition === 'before_track') heading = null; 
 
-            const headsign = trip.headsign || 'Neznámý cíl';
+            // Cross-provider matchId vytvořené z PID GTFS CISJR (např. 100343_1043)
+            const cisjrLine = trip.cisjrLine;
+            const cisjrTrip = trip.cisjrTrip;
+            const matchId = (cisjrLine && cisjrTrip) ? `${cisjrLine}_${cisjrTrip}` : `pid_${trip.route}_${trip.tripId}`;
 
             vehicles.push({
                 id: `pid_${trip.tripId}`,
@@ -288,8 +263,8 @@ export default class PidProvider extends BaseProvider {
                 lon: trip.lon,
                 heading: heading,
                 route: trip.route || '?',
-                headsign: headsign,
-                globalMatchId: `pid_${trip.route}_${trip.tripId}`, 
+                headsign: trip.headsign || 'Neznámý cíl',
+                globalMatchId: matchId, 
                 delay: trip.delay || 0,
                 attributes: { ...trip } 
             });
