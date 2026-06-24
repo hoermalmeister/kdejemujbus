@@ -14,7 +14,6 @@ export default class PidProvider extends BaseProvider {
         try {
             const response = await fetch(this.apiUrl);
             if (!response.ok) throw new Error(`PID Můstek vrátil chybu: ${response.status}`);
-            
             const data = await response.json();
             return this.normalize(data);
         } catch (error) { return []; }
@@ -37,9 +36,10 @@ export default class PidProvider extends BaseProvider {
 
         const idParts = globalId.split('_');
         const runNum = idParts.length >= 3 ? idParts[2] : '';
+        
+        // Klasická krátká linka pro mapu a nadpis panelu
         let route = runNum ? `${routeLine}/${runNum}` : routeLine;
 
-        // PRO JÍZDNÍ ŘÁD: Pokud máme data ze Spojenky (CISJR), ukážeme Linkospoj
         let timetableRoute = (attributes.cisjrLine && attributes.cisjrTrip) 
             ? `${attributes.cisjrLine}/${attributes.cisjrTrip}` 
             : route;
@@ -50,7 +50,6 @@ export default class PidProvider extends BaseProvider {
                 const response = await fetch(url);
                 if (response.ok) {
                     const data = await response.json();
-                    
                     if (data && data.infowindow_content) {
                         const doc = new DOMParser().parseFromString(data.infowindow_content, 'text/html');
 
@@ -60,7 +59,6 @@ export default class PidProvider extends BaseProvider {
                             if (tds.length >= 2) {
                                 const label = tds[0].textContent.trim();
                                 const val = tds[1].textContent.replace(/\n/g, '').trim();
-                                
                                 if (label === 'Dopravce:') carrier = val.split(/\s{2,}/)[0];
                                 else if (label === 'Oběh:') routeLine = val.split('/')[0].trim();
                             }
@@ -120,13 +118,13 @@ export default class PidProvider extends BaseProvider {
             }
         }
 
+        // Musíme ji poslat ven, aby si ji app.js mohlo přečíst!
         return { route, timetableRoute, destination, stop, delay, carrier, isNAD };
     }
 
     async getRouteInfo(globalId, attributes) {
         const tripId = globalId.replace('pid_', '');
         const url = `${this.shapeUrl}?id=${tripId}`;
-        
         try {
             const response = await fetch(url);
             const data = await response.json();
@@ -136,7 +134,8 @@ export default class PidProvider extends BaseProvider {
     }
 
     async getTimetable(globalId, attributes) {
-        const actualId = attributes.id || attributes.trip_id || attributes.tripId;
+        if (!attributes) return null;
+        const actualId = attributes.tripId || attributes.id || attributes.trip_id;
         if (!actualId) return null;
         
         const vehicle = attributes.vehicle || '';
@@ -201,10 +200,8 @@ export default class PidProvider extends BaseProvider {
                     let aMins = parseInt(actual.split(':')[0])*60 + parseInt(actual.split(':')[1]);
                     let pMins = parseInt(planned.split(':')[0])*60 + parseInt(planned.split(':')[1]);
                     let diff = aMins - pMins;
-                    
                     if (diff < -12*60) diff += 24*60; 
                     if (diff > 12*60) diff -= 24*60;  
-                    
                     if (diff < 0) color = '#bada55'; 
                     else if (diff <= 5) color = '#58d68d'; 
                     else if (diff <= 15) color = '#f39c12'; 
@@ -244,17 +241,16 @@ export default class PidProvider extends BaseProvider {
     normalize(rawData) {
         if (!rawData || !rawData.trips) return [];
         
+        const tripsArray = Array.isArray(rawData.trips) ? rawData.trips : Object.values(rawData.trips);
         const vehicles = [];
         
-        // Iterujeme přes záznamy s jistotou zachování klíče
-        for (const [key, trip] of Object.entries(rawData.trips)) {
+        for (const trip of tripsArray) {
             if (trip.routeType === 2) continue; 
 
             let heading = (trip.bearing !== undefined && trip.bearing !== null) ? trip.bearing : null;
             if (trip.inactive === true || trip.statePosition === 'before_track') heading = null; 
 
-            // SPRÁVNÉ ID získáme na 100 % (přilepili jsme ho v backendu, nebo ho vezmeme z klíče)
-            const actualId = trip.tripId || trip.id || trip.trip_id || (typeof key === 'string' && key.includes('_') ? key : null);
+            const actualId = trip.tripId || trip.id || trip.trip_id;
             if (!actualId) continue;
             
             const cisjrLine = trip.cisjrLine;
