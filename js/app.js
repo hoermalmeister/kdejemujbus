@@ -365,6 +365,20 @@ function renderDetailView() {
     let delayColor = '#58d68d'; 
     let delayText = 'Bez zpoždění';
 
+    if (d.delay === 'V cíli') {
+        delayColor = '#7f8c8d'; // Dispečerská šedá (nebo nech zelenou)
+        delayText = 'V cíli';
+        activeTrainData.heading = null; // Okamžitě změní šipku na mapě na kroužek!
+    } else if (d.delay.startsWith('-')) {
+        delayColor = '#bada55'; 
+        delayText = d.delay;    
+    } else if (d.delay !== '0 min') {
+        let minVal = parseInt(d.delay);
+        if (minVal > 15) delayColor = '#e74c3c';
+        else if (minVal > 5) delayColor = '#f39c12';
+        delayText = '+' + d.delay; // Zde app.js přidává to jediné správné plusko
+    }
+    
     if (d.delay.startsWith('-')) {
         delayColor = '#bada55'; delayText = d.delay;    
     } else if (d.delay !== '0 min') {
