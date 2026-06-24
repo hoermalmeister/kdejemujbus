@@ -4,14 +4,15 @@ export default class VdvProvider extends BaseProvider {
     constructor() {
         super();
         this.providerName = 'VDV';
+        // Tvoje vlastní stabilní architektura!
+        this.apiUrl = 'https://grapp-bridge.onrender.com/vdv';
+        this.detailUrl = 'https://grapp-bridge.onrender.com/vdv/detail?id=';
+        this.timetableUrl = 'https://grapp-bridge.onrender.com/vdv/timetable?id=';
     }
 
     async fetchData() {
         try {
-            const targetUrl = `https://mapavdv.kr-vysocina.cz/Ajax/GetPoints?t=${Date.now()}`;
-            const proxyUrl = `https://corsproxy.io/?${encodeURIComponent(targetUrl)}`;
-
-            const response = await fetch(proxyUrl);
+            const response = await fetch(this.apiUrl);
             if (!response.ok) throw new Error(`VDV API chyba: ${response.status}`);
             
             const data = await response.json();
@@ -42,10 +43,8 @@ export default class VdvProvider extends BaseProvider {
         let timetableRoute = fullText;
 
         try {
-            const targetUrl = `https://mapavdv.kr-vysocina.cz/Ajax/OpenInfoWindow?id=${attributes.id}&t=${Date.now()}`;
-            const proxyUrl = `https://corsproxy.io/?${encodeURIComponent(targetUrl)}`;
-
-            const res = await fetch(proxyUrl);
+            // Pálíme dotaz čistě na tvůj server
+            const res = await fetch(`${this.detailUrl}${attributes.id}`);
             if (res.ok) {
                 const html = await res.text();
                 const doc = new DOMParser().parseFromString(html, 'text/html');
@@ -57,7 +56,6 @@ export default class VdvProvider extends BaseProvider {
                     const th = tr.querySelector('th');
                     const td = tr.querySelector('td');
                     if (th && td) {
-                        // NEPRŮSTŘELNÁ KONTROLA: Vše na malá písmena, ignorujeme přesnou diakritiku a mezery
                         const key = th.textContent.toLowerCase();
                         const val = td.textContent.trim();
                         
@@ -85,7 +83,7 @@ export default class VdvProvider extends BaseProvider {
             console.warn("VDV Detail selhal, použiji základní atributy.");
         }
 
-        return { route, timetableRoute, destination, stop, delay, carrier: 'VDV Vysočina', isNAD: false };
+        return { route, timetableRoute, destination, stop, delay: delayText, carrier: 'VDV Vysočina', isNAD: false };
     }
 
     async getRouteInfo() { return null; }
@@ -93,11 +91,9 @@ export default class VdvProvider extends BaseProvider {
     async getTimetable(globalId, attributes) {
         if (!attributes || attributes.id === undefined) return null;
 
-        const targetUrl = `https://mapavdv.kr-vysocina.cz/Ajax/GetTimetable?vehicleNumber=${attributes.id}&currentStopId=0&t=${Date.now()}`;
-        const proxyUrl = `https://corsproxy.io/?${encodeURIComponent(targetUrl)}`;
-
         try {
-            const response = await fetch(proxyUrl);
+            // Pálíme dotaz na tvůj server
+            const response = await fetch(`${this.timetableUrl}${attributes.id}`);
             if (!response.ok) return null;
             
             const html = await response.text();
