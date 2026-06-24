@@ -244,18 +244,18 @@ export default class PidProvider extends BaseProvider {
     normalize(rawData) {
         if (!rawData || !rawData.trips) return [];
         
-        // Opět pro jistotu ošetření struktury (Array vs Object)
-        const tripsArray = Array.isArray(rawData.trips) ? rawData.trips : Object.values(rawData.trips);
         const vehicles = [];
         
-        for (const trip of tripsArray) {
+        // Iterujeme přes záznamy s jistotou zachování klíče
+        for (const [key, trip] of Object.entries(rawData.trips)) {
             if (trip.routeType === 2) continue; 
 
             let heading = (trip.bearing !== undefined && trip.bearing !== null) ? trip.bearing : null;
             if (trip.inactive === true || trip.statePosition === 'before_track') heading = null; 
 
-            // SPRÁVNÉ ID
-            const actualId = trip.id || trip.trip_id || trip.tripId;
+            // SPRÁVNÉ ID získáme na 100 % (přilepili jsme ho v backendu, nebo ho vezmeme z klíče)
+            const actualId = trip.tripId || trip.id || trip.trip_id || (typeof key === 'string' && key.includes('_') ? key : null);
+            if (!actualId) continue;
             
             const cisjrLine = trip.cisjrLine;
             const cisjrTrip = trip.cisjrTrip;
