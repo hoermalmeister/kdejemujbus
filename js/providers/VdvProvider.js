@@ -4,17 +4,18 @@ export default class VdvProvider extends BaseProvider {
     constructor() {
         super();
         this.providerName = 'VDV';
-        this.apiUrl = 'https://corsproxy.io/?https://mapavdv.kr-vysocina.cz/Ajax/GetPoints';
-        this.detailUrl = 'https://corsproxy.io/?https://mapavdv.kr-vysocina.cz/Ajax/OpenInfoWindow?id=';
     }
 
     async fetchData() {
         try {
-            const response = await fetch(this.apiUrl);
+            // Unikátní URL pro každý dotaz zabrání corsproxy v cachování
+            const targetUrl = `https://mapavdv.kr-vysocina.cz/Ajax/GetPoints?t=${Date.now()}`;
+            const proxyUrl = `https://corsproxy.io/?${encodeURIComponent(targetUrl)}`;
+
+            const response = await fetch(proxyUrl);
             if (!response.ok) throw new Error(`VDV API chyba: ${response.status}`);
             
             const data = await response.json();
-            // Normalizace je teď asynchronní (skenuje HTML), musíme použít await!
             return await this.normalize(data);
         } catch (error) {
             console.error("Chyba VDV:", error.message);
@@ -41,15 +42,17 @@ export default class VdvProvider extends BaseProvider {
         let route = shortRoute;
         let timetableRoute = fullText;
 
-        // Pokud jsme spoj (číslo) zjistili už při skenování zpoždění, rovnou ho použijeme
         if (attributes.spoj) {
             route = `${shortRoute}/${attributes.spoj}`;
             timetableRoute = `${fullText}/${attributes.spoj}`;
         }
 
-        // Stejně se ale dotážeme znovu, abychom měli co nejčerstvější zastávku a oběh pro kliknuté vozidlo
         try {
-            const res = await fetch(`${this.detailUrl}${attributes.id}`);
+            // Anti-cache rovnou i u stahování detailů
+            const targetUrl = `https://mapavdv.kr-vysocina.cz/Ajax/OpenInfoWindow?id=${attributes.id}&t=${Date.now()}`;
+            const proxyUrl = `https://corsproxy.io/?${encodeURIComponent(targetUrl)}`;
+
+            const res = await fetch(proxyUrl);
             if (res.ok) {
                 const html = await res.text();
                 const doc = new DOMParser().parseFromString(html, 'text/html');
@@ -87,8 +90,8 @@ export default class VdvProvider extends BaseProvider {
         }
 
         return {
-            route: route,                // Třímístná + spoj do Rozcestníku
-            timetableRoute: timetableRoute, // Plná šestimístná + spoj do detailu
+            route: route,
+            timetableRoute: timetableRoute,
             destination: destination,
             stop: stop, 
             delay: delayText,
@@ -103,7 +106,6 @@ export default class VdvProvider extends BaseProvider {
     async normalize(rawData) {
         if (!rawData || !Array.isArray(rawData)) return [];
         
-        // 1. ZÁKLADNÍ FILTR: Zahodíme vlaky a MHD (krátké texty)
         const validTrips = rawData.filter(trip => {
             if (trip.traction === "TRAIN") return false;
             if (!trip.text || trip.text.length <= 3) return false;
@@ -111,9 +113,8 @@ export default class VdvProvider extends BaseProvider {
         });
 
         const results = [];
-        const chunkSize = 15; // Ochrana proti zablokování z corsproxy.io (maximálně 15 souběžných žádostí)
+        const chunkSize = 15;
 
-        // 2. CHYTRÁ ITERACE: Skenujeme spoje ve skupinkách
         for (let i = 0; i < validTrips.length; i += chunkSize) {
             const chunk = validTrips.slice(i, i + chunkSize);
             
@@ -121,6 +122,8 @@ export default class VdvProvider extends BaseProvider {
                 let isUnknownDelay = (trip.delay === -2147483648);
                 let headsign = trip.finalStopName || 'Neznámý cíl';
                 if (headsign.includes('N/a')) headsign = 'Neznámý cíl';
+                
+                // Přísně třímístná linka pro mapové ikony!
                 let shortRoute = trip.text.slice(-3);
 
                 const vehicleObj = {
@@ -128,7 +131,7 @@ export default class VdvProvider extends BaseProvider {
                     provider: this.providerName,
                     lat: trip.lat,
                     lon: trip.lng,
-                    heading: null, // Vždycky kolečko, chybí orientace
+                    heading: null,
                     route: shortRoute,
                     headsign: headsign,
                     globalMatchId: `vdv_${trip.text}_${trip.id}`,
@@ -136,10 +139,12 @@ export default class VdvProvider extends BaseProvider {
                     attributes: { ...trip }
                 };
 
-                // 3. ODHALOVÁNÍ FANTOMŮ S NULL ZPOŽDĚNÍM
                 if (isUnknownDelay) {
                     try {
-                        const res = await fetch(`${this.detailUrl}${trip.id}`);
+                        const targetUrl = `https://mapavdv.kr-vysocina.cz/Ajax/OpenInfoWindow?id=${trip.id}&t=${Date.now()}`;
+                        const proxyUrl = `https://corsproxy.io/?${encodeURIComponent(targetUrl)}`;
+
+                        const res = await fetch(proxyUrl);
                         if (!res.ok) return vehicleObj;
                         
                         const html = await res.text();
@@ -157,36 +162,27 @@ export default class VdvProvider extends BaseProvider {
                             }
                         });
 
-                        // FILTR KONEČNÉ ZASTÁVKY
-                        // Pokud autobus hlásí, že se nachází na zastávce, která je shodná s jeho cílem,
-                        // pak už s největší pravděpodobností stojí na konečné vypnutý.
                         if (currentStop && trip.finalStopName && currentStop.trim().toLowerCase() === trip.finalStopName.trim().toLowerCase()) {
-                            return null; // Autobus z mapy kompletně smažeme!
+                            return null;
                         }
 
-                        // Autobus žije! Uložíme zjištěné jméno zastávky i číslo spoje, 
-                        // ať se to propíše do rozcestníku a urychlí načítání.
+                        // Uložíme je do atributů, takže getDetails o nich ví, 
+                        // ale NEUPRAVUJEME vehicleObj.route, aby na mapě zůstalo jen číslo.
                         vehicleObj.attributes.spoj = spoj;
                         vehicleObj.attributes.currentStop = currentStop;
                         
-                        if (spoj) {
-                            vehicleObj.route = `${shortRoute}/${spoj}`;
-                        }
-                        
                     } catch (e) {
-                        // Pokud CORS selže, ponecháme ho raději na mapě (Fallback)
+                        // Tiché zachycení při výpadku proxy
                     }
                 }
 
                 return vehicleObj;
             });
 
-            // Počkáme, až se skupinka 15 autobusů vyřeší, a jdeme na další
             const chunkResults = await Promise.all(promises);
             results.push(...chunkResults);
         }
 
-        // Vrátíme pole pouze živých vozidel (smaže ty vrácené jako null)
         return results.filter(v => v !== null);
     }
 }
