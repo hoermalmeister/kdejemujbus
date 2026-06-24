@@ -4,18 +4,18 @@ export default class VdvProvider extends BaseProvider {
     constructor() {
         super();
         this.providerName = 'VDV';
-        // Používáme tvůj spolehlivý Můstek místo problémového corsproxy
-        this.apiUrl = 'https://grapp-bridge.onrender.com/vdv';
-        this.detailUrl = 'https://grapp-bridge.onrender.com/vdv/detail?id=';
     }
 
     async fetchData() {
         try {
-            const response = await fetch(this.apiUrl);
+            // Jeden dotaz za 15s přes corsproxy.io projde naprosto hladce
+            const targetUrl = `https://mapavdv.kr-vysocina.cz/Ajax/GetPoints?t=${Date.now()}`;
+            const proxyUrl = `https://corsproxy.io/?${encodeURIComponent(targetUrl)}`;
+
+            const response = await fetch(proxyUrl);
             if (!response.ok) throw new Error(`VDV API chyba: ${response.status}`);
             
             const data = await response.json();
-            // Návrat k bleskovému, synchronnímu zpracování
             return this.normalize(data);
         } catch (error) {
             console.error("Chyba VDV:", error.message);
@@ -43,8 +43,11 @@ export default class VdvProvider extends BaseProvider {
         let timetableRoute = fullText;
 
         try {
-            // Teprve PO KLIKNUTÍ si stáhneme detaily ze serveru
-            const res = await fetch(`${this.detailUrl}${attributes.id}`);
+            // Načtení detailu až při reálném kliknutí uživatele
+            const targetUrl = `https://mapavdv.kr-vysocina.cz/Ajax/OpenInfoWindow?id=${attributes.id}&t=${Date.now()}`;
+            const proxyUrl = `https://corsproxy.io/?${encodeURIComponent(targetUrl)}`;
+
+            const res = await fetch(proxyUrl);
             if (res.ok) {
                 const html = await res.text();
                 const doc = new DOMParser().parseFromString(html, 'text/html');
@@ -73,7 +76,6 @@ export default class VdvProvider extends BaseProvider {
 
                 shortRoute = fullText.length >= 3 ? fullText.slice(-3) : fullText;
                 if (exSpoj) {
-                    // Propsání 3-místného a 6-místného čísla spoje do UI
                     route = `${shortRoute}/${exSpoj}`;
                     timetableRoute = `${fullText}/${exSpoj}`;
                 }
@@ -82,37 +84,92 @@ export default class VdvProvider extends BaseProvider {
             console.warn("VDV Detail selhal, použiji základní atributy.");
         }
 
-        return {
-            route: route,
-            timetableRoute: timetableRoute,
-            destination: destination,
-            stop: stop, 
-            delay: delayText,
-            carrier: 'VDV Vysočina',
-            isNAD: false
-        };
+        return { route, timetableRoute, destination, stop, delay, carrier: 'VDV Vysočina', isNAD: false };
     }
 
     async getRouteInfo() { return null; }
-    async getTimetable() { return null; }
+
+    async getTimetable(globalId, attributes) {
+        if (!attributes || attributes.id === undefined) return null;
+
+        // Načtení jízdního řádu přes corsproxy až po kliknutí na tlačítko
+        const targetUrl = `https://mapavdv.kr-vysocina.cz/Ajax/GetTimetable?vehicleNumber=${attributes.id}&currentStopId=0&t=${Date.now()}`;
+        const proxyUrl = `https://corsproxy.io/?${encodeURIComponent(targetUrl)}`;
+
+        try {
+            const response = await fetch(proxyUrl);
+            if (!response.ok) return null;
+            
+            const html = await response.text();
+            const doc = new DOMParser().parseFromString(html, 'text/html');
+            const rows = doc.querySelectorAll('#timetableCurrentContainer tbody tr');
+            if (!rows || rows.length === 0) return null;
+
+            const stops = [];
+            let delayMins = (attributes.delay !== undefined && attributes.delay !== -2147483648) ? attributes.delay : 0;
+
+            let color = '#58d68d';
+            if (delayMins > 15) color = '#e74c3c';
+            else if (delayMins > 5) color = '#f39c12';
+            else if (delayMins < 0) color = '#bada55';
+
+            const extractTime = (td) => {
+                if (!td) return null;
+                const text = td.textContent.trim();
+                return text && text !== '--:--' && text !== '' ? text : null;
+            };
+
+            const calculateActualTime = (plannedTime, delay) => {
+                 if (!plannedTime) return null;
+                 let parts = plannedTime.split(':');
+                 if(parts.length < 2) return plannedTime;
+                 let pMins = parseInt(parts[0], 10) * 60 + parseInt(parts[1], 10);
+                 let aMins = pMins + delay;
+                 if (aMins < 0) aMins += 24 * 60;
+                 if (aMins >= 24 * 60) aMins %= (24 * 60);
+                 return `${Math.floor(aMins / 60).toString().padStart(2, '0')}:${(aMins % 60).toString().padStart(2, '0')}`;
+            };
+
+            rows.forEach((row, index) => {
+                const tds = row.querySelectorAll('td');
+                if (tds.length < 3) return;
+
+                const stationName = tds[0].textContent.trim();
+                const pArr = extractTime(tds[1]);
+                const pDep = extractTime(tds[2]);
+                const aArr = calculateActualTime(pArr, delayMins);
+                const aDep = calculateActualTime(pDep, delayMins);
+
+                let arrival = null;
+                let departure = null;
+                const arrBlock = { planned: pArr, actual: aArr, color: color };
+                const depBlock = { planned: pDep, actual: aDep, color: color };
+
+                if (index === 0) departure = depBlock;
+                else if (index === rows.length - 1) arrival = arrBlock;
+                else { arrival = arrBlock; departure = depBlock; }
+
+                stops.push({ station: stationName, isNAD: false, isPassing: false, arr: arrival, dep: departure });
+            });
+            
+            return stops;
+        } catch (error) { return null; }
+    }
 
     normalize(rawData) {
         if (!rawData || !Array.isArray(rawData)) return [];
-        
         const vehicles = [];
         
         for (const trip of rawData) {
-            // Ignorujeme vlaky a MHD (krátké texty)
             if (trip.traction === "TRAIN") continue;
             if (!trip.text || trip.text.length <= 3) continue;
 
             let delay = trip.delay;
-            if (delay === -2147483648) delay = 0; // Pro barvu zpoždění na mapě použijeme 0
+            if (delay === -2147483648) delay = 0;
 
             let headsign = trip.finalStopName || 'Neznámý cíl';
             if (headsign.includes('N/a')) headsign = 'Neznámý cíl';
             
-            // Přísně třímístná linka pro mapové ikony!
             let shortRoute = trip.text.slice(-3);
 
             vehicles.push({
@@ -120,7 +177,7 @@ export default class VdvProvider extends BaseProvider {
                 provider: this.providerName,
                 lat: trip.lat,
                 lon: trip.lng,
-                heading: null, // Vždycky kolečko (VDV nedává směrování)
+                heading: null, 
                 route: shortRoute,
                 headsign: headsign,
                 globalMatchId: `vdv_${trip.text}_${trip.id}`,
@@ -128,7 +185,6 @@ export default class VdvProvider extends BaseProvider {
                 attributes: { ...trip }
             });
         }
-
         return vehicles;
     }
 }
