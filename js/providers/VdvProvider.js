@@ -168,12 +168,14 @@ export default class VdvProvider extends BaseProvider {
             
             let shortRoute = trip.text.slice(-3);
 
+            let vehicleHeading = (trip.heading !== undefined && trip.heading !== null) ? Math.round(trip.heading) : null;
+
             vehicles.push({
                 id: `vdv_${trip.id}`,
                 provider: this.providerName,
                 lat: trip.lat,
                 lon: trip.lng,
-                heading: null, 
+                heading: vehicleHeading, // <--- Sem se teď přiřadí vypočítaný úhel!
                 route: shortRoute,
                 headsign: headsign,
                 globalMatchId: `vdv_${trip.text}_${trip.id}`,
