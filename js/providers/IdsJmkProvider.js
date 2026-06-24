@@ -37,7 +37,7 @@ export default class IdsJmkProvider extends BaseProvider {
         let lastKnownName = attributes.LastStopName;
         let isFallback = false;
 
-        // Pokud nemáme přeložený název zastávky, sáhneme si do JŘ pro poslední pojmenovanou
+        // Pokud vozidlo projelo technickým waypointem, najdeme v JŘ poslední pojmenovanou zastávku
         if (!lastKnownName && attributes.LastStopID) {
             try {
                 const url = `${this.timetableUrl}?serviceid=${attributes.ServiceId}&lineid=${attributes.LineID}&routeid=${attributes.RouteID}`;
@@ -49,7 +49,6 @@ export default class IdsJmkProvider extends BaseProvider {
                     const currentIndex = allStops.findIndex(s => s.StopId == attributes.LastStopID);
                     
                     if (currentIndex !== -1) {
-                        // Couváme v jízdním řádu a hledáme první zastávku, kterou známe JMÉNEM
                         for (let i = currentIndex - 1; i >= 0; i--) {
                             if (allStops[i].HasName) {
                                 lastKnownName = allStops[i].StopName;
@@ -66,9 +65,9 @@ export default class IdsJmkProvider extends BaseProvider {
 
         let stop = 'Na trase...';
         if (lastKnownName) {
-            stop = isFallback ? `Za zastávkou: ${lastKnownName}` : lastKnownName;
+            stop = isFallback ? `${lastKnownName}` : lastKnownName;
         } else if (attributes.LastStopID) {
-            stop = `Zastávka ID: ${attributes.LastStopID}`; 
+            stop = `${attributes.LastStopID}`; 
         }
 
         let delayNum = attributes.Delay || 0;
@@ -77,7 +76,7 @@ export default class IdsJmkProvider extends BaseProvider {
         let isWaiting = attributes.IsInactive === true;
         if (isWaiting) {
             delay = '0 min'; 
-            if (lastKnownName) stop = `Výchozí zastávka: ${lastKnownName}`;
+            if (lastKnownName) stop = `${lastKnownName}`;
             else stop = 'Čeká na výchozí zastávce';
         }
 
@@ -98,6 +97,7 @@ export default class IdsJmkProvider extends BaseProvider {
             data.Stops.forEach(stop => {
                 if (stop.Path) {
                     stop.Path.forEach(pt => {
+                        // OTOČENÍ SOUŘADNIC: IDS JMK dává [lat, lon], MapLibre žádá [lon, lat]
                         coords.push([pt[1], pt[0]]);
                     });
                 }
@@ -133,7 +133,7 @@ export default class IdsJmkProvider extends BaseProvider {
 
             const rawStops = data.Routes[0].Stops;
             
-            // ODŘÍZNUTÍ NEVEŘEJNÝCH WAYPOINTŮ
+            // ODSTRANĚNÍ NEVIDITELNÝCH TECHNICKÝCH BODŮ (Waypointů na dálnici atd.)
             const visibleStops = rawStops.filter(s => s.IsVisible === true);
             
             visibleStops.forEach((stop, index) => {
@@ -148,14 +148,9 @@ export default class IdsJmkProvider extends BaseProvider {
                 const arrBlock = { planned: pArr, actual: aArr, color: color };
                 const depBlock = { planned: pDep, actual: aDep, color: color };
 
-                if (index === 0) {
-                    departure = depBlock;
-                } else if (index === visibleStops.length - 1) {
-                    arrival = arrBlock;
-                } else {
-                    arrival = arrBlock;
-                    departure = depBlock;
-                }
+                if (index === 0) departure = depBlock;
+                else if (index === visibleStops.length - 1) arrival = arrBlock;
+                else { arrival = arrBlock; departure = depBlock; }
 
                 stops.push({
                     station: stop.StopName,
@@ -175,6 +170,7 @@ export default class IdsJmkProvider extends BaseProvider {
         const vehicles = [];
         
         for (const trip of rawData.Vehicles) {
+            // Vlaky zahazujeme (Máme je v GRAPPu)
             if (trip.VType === 5) continue; 
 
             let heading = (trip.Bearing !== undefined && trip.Bearing !== null) ? trip.Bearing : null;
