@@ -136,11 +136,11 @@ export default class PidProvider extends BaseProvider {
     }
 
     async getTimetable(globalId, attributes) {
-        if (!attributes || !attributes.tripId) return null;
+        const actualId = attributes.id || attributes.trip_id || attributes.tripId;
+        if (!actualId) return null;
         
-        const tripId = attributes.tripId;
         const vehicle = attributes.vehicle || '';
-        const url = `${this.timetableUrl}?trip_id=${tripId}&vehicle=${vehicle}`;
+        const url = `${this.timetableUrl}?trip_id=${actualId}&vehicle=${vehicle}`;
         
         try {
             const response = await fetch(url);
@@ -242,22 +242,27 @@ export default class PidProvider extends BaseProvider {
     }
 
     normalize(rawData) {
-        if (!rawData || !rawData.trips || !Array.isArray(rawData.trips)) return [];
+        if (!rawData || !rawData.trips) return [];
+        
+        // Opět pro jistotu ošetření struktury (Array vs Object)
+        const tripsArray = Array.isArray(rawData.trips) ? rawData.trips : Object.values(rawData.trips);
         const vehicles = [];
         
-        for (const trip of rawData.trips) {
+        for (const trip of tripsArray) {
             if (trip.routeType === 2) continue; 
 
             let heading = (trip.bearing !== undefined && trip.bearing !== null) ? trip.bearing : null;
             if (trip.inactive === true || trip.statePosition === 'before_track') heading = null; 
 
-            // Cross-provider matchId vytvořené z PID GTFS CISJR (např. 100343_1043)
+            // SPRÁVNÉ ID
+            const actualId = trip.id || trip.trip_id || trip.tripId;
+            
             const cisjrLine = trip.cisjrLine;
             const cisjrTrip = trip.cisjrTrip;
-            const matchId = (cisjrLine && cisjrTrip) ? `${cisjrLine}_${cisjrTrip}` : `pid_${trip.route}_${trip.tripId}`;
+            const matchId = (cisjrLine && cisjrTrip) ? `${cisjrLine}_${cisjrTrip}` : `pid_${trip.route}_${actualId}`;
 
             vehicles.push({
-                id: `pid_${trip.tripId}`,
+                id: `pid_${actualId}`,
                 provider: this.providerName,
                 lat: trip.lat,
                 lon: trip.lon,
