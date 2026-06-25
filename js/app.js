@@ -46,7 +46,7 @@ const map = new maplibregl.Map({
     container: 'map',
     style: {
         version: 8,
-        glyphs: "https://demotiles.maplibre.org/font/{fontstack}/{range}.pbf", 
+        glyphs: "https://fonts.openmaptiles.org/{fontstack}/{range}.pbf", 
         sources: { 
             'carto-dark': { 
                 type: 'raster', 
@@ -59,7 +59,6 @@ const map = new maplibregl.Map({
     center: [startLng, startLat], 
     zoom: startZoom,
     maxZoom: 19,
-    // KOUZLO: Úplný zákaz naklápění (Pitch / Tilt), rotace zůstává
     pitchWithRotate: false, 
     dragPitch: false,       
     touchPitch: false       
@@ -149,15 +148,11 @@ map.on('load', () => {
 
             // 2. CHOVÁNÍ TEXTU (Zůstává vždy vodorovně čitelný!)
             'text-field': ['get', 'route'],
-            
-            // --- OPRAVA ZDE ---
-            // 'Open Sans Bold' na demotiles neexistuje, použijeme Regular
-            'text-font': ['Open Sans Regular'], 
-            
-            'text-size': 11, // Můžeš malinko zvětšit (např. z 10 na 11), když už to není Bold
+            'text-font': ['Open Sans Bold'],
+            'text-size': 11,
             'text-allow-overlap': true,
             'text-ignore-placement': true,
-            'text-rotation-alignment': 'viewport', 
+            'text-rotation-alignment': 'viewport',
             
             'symbol-sort-key': ['get', 'sortKey'] 
         },
