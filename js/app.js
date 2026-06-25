@@ -32,7 +32,36 @@ let isTimetableOpen = false;
 
 let activeTrainData = { props: null, details: null, timetable: null };
 
-// --- CENTRÁLNÍ DEFINICE BAREV PRO POSKYTOVATELE ---
+// --- CSS STYLY PRO DOKONALÉ HTML MARKERY ---
+const style = document.createElement('style');
+style.innerHTML = `
+    .veh-marker {
+        position: absolute;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        pointer-events: auto;
+        cursor: pointer;
+    }
+    .veh-arrow {
+        /* Plynulé otáčení šipky, když taháš myší za mapu */
+        transition: transform 0.1s linear;
+    }
+    .veh-label {
+        color: #FFFFFF;
+        font-family: sans-serif;
+        font-size: 11px;
+        font-weight: bold;
+        margin-top: -4px;
+        /* Černý okraj textu simulující tvůj původní ctx.lineWidth */
+        text-shadow: -1.5px -1.5px 0 #000, 1.5px -1.5px 0 #000, -1.5px 1.5px 0 #000, 1.5px 1.5px 0 #000;
+        white-space: nowrap;
+        pointer-events: none; /* Kliknutí propadne až na hlavní kontejner markeru */
+    }
+`;
+document.head.appendChild(style);
+
 function getProviderColor(provider) {
     if (provider === 'GRAPP') return '#800000';
     if (provider === 'PID') return '#d40000';
@@ -41,12 +70,20 @@ function getProviderColor(provider) {
     return '#ff8080'; 
 }
 
-// --- INICIALIZACE MAPY (S blokací 3D naklápění) ---
+function getProviderZIndex(provider) {
+    // Definujeme striktní vrstvení (GRAPP nejvýš)
+    if (provider === 'GRAPP') return 400000;
+    if (provider === 'IDS JMK') return 300000;
+    if (provider === 'PID') return 200000;
+    if (provider === 'VDV') return 100000;
+    return 0;
+}
+
+// --- INICIALIZACE MAPY ---
 const map = new maplibregl.Map({
     container: 'map',
     style: {
         version: 8,
-        glyphs: "https://fonts.openmaptiles.org/{fontstack}/{range}.pbf", 
         sources: { 
             'carto-dark': { 
                 type: 'raster', 
@@ -64,7 +101,6 @@ const map = new maplibregl.Map({
     touchPitch: false       
 });
 
-// --- FUNKCE PRO ZMĚNU URL V PROHLÍŽEČI ---
 function updateURL() {
     const center = map.getCenter();
     const params = new URLSearchParams();
@@ -76,19 +112,12 @@ function updateURL() {
         const v = activeTrainData.props;
         let urlId = v.id;
         
-        if (v.provider === 'GRAPP' && v.globalMatchId) {
-            urlId = v.globalMatchId.replace(/ /g, '_');
-        } else if (v.text) {
-            urlId = v.text.replace(/\//g, '_').replace(/ /g, '_');
-        } else if (v.route && v.runNumber) {
-            urlId = `${v.route}_${v.runNumber}`;
-        }
+        if (v.provider === 'GRAPP' && v.globalMatchId) urlId = v.globalMatchId.replace(/ /g, '_');
+        else if (v.text) urlId = v.text.replace(/\//g, '_').replace(/ /g, '_');
+        else if (v.route && v.runNumber) urlId = `${v.route}_${v.runNumber}`;
         
         params.set('id', urlId);
-        
-        if (isTimetableOpen) {
-            params.set('tt', '1');
-        }
+        if (isTimetableOpen) params.set('tt', '1');
     }
     
     window.history.replaceState(null, '', window.location.pathname + '?' + params.toString());
@@ -97,105 +126,58 @@ function updateURL() {
 map.on('moveend', updateURL);
 map.on('zoomend', updateURL);
 
-// --- GENEROVÁNÍ ZÁKLADNÍCH TVARŮ (Bez textu a fixních úhlů!) ---
-function getOrCreateBaseIcon(map, provider, isCircle) {
-    // Generujeme pouze barvu a tvar, natočení a text řeší MapLibre WebGL Engine
-    const shape = isCircle ? 'circle' : 'arrow';
-    const iconId = `veh-base-${provider}-${shape}`;
+// --- PAMĚŤ PRO NATIVNÍ HTML MARKERY ---
+const activeMarkers = new Map();
 
-    if (map.hasImage(iconId)) return iconId;
-
-    const size = 44; 
-    const canvas = document.createElement('canvas');
-    canvas.width = size * 2; canvas.height = size * 2;
-    const ctx = canvas.getContext('2d');
-    
-    ctx.scale(2, 2); ctx.translate(size/2, size/2); 
-
-    let fillColor = getProviderColor(provider);
-
-    if (!isCircle) {
-        ctx.scale(1.4, 1.4); ctx.translate(-11, -15.5); 
-        const path = new Path2D("M 10.97,2.31 C 10.97,2.31 2.03,23.03 2.03,23.03 2.03,23.03 11.00,20.94 11.00,20.94 11.00,20.94 20.00,23.00 20.00,23.00 20.00,23.00 10.97,2.31 10.97,2.31 Z");
-        ctx.fillStyle = fillColor; ctx.fill(path);
-    } else {
-        ctx.beginPath(); ctx.arc(0, 0, 12, 0, 2 * Math.PI); ctx.fillStyle = fillColor; ctx.fill();
-    }
-
-    map.addImage(iconId, ctx.getImageData(0, 0, size * 2, size * 2), { pixelRatio: 2 });
-    return iconId;
-}
-
-// --- PO NAČTENÍ MAPY ---
 map.on('load', () => {
     map.addSource('selected-route', { type: 'geojson', data: { type: 'Feature', geometry: { type: 'LineString', coordinates: [] } } });
     map.addLayer({ id: 'selected-route-layer', type: 'line', source: 'selected-route', layout: { 'line-join': 'round', 'line-cap': 'round' }, paint: { 'line-color': '#e67e22', 'line-width': 4, 'line-opacity': 0.8 } });
 
-    map.addSource('vehicles', { type: 'geojson', data: { type: 'FeatureCollection', features: [] } });
-    
-    // Zásadní úprava: Vrstva má oddělené chování ikony a textu
-    map.addLayer({ 
-        id: 'vehicles-layer', 
-        type: 'symbol', 
-        source: 'vehicles', 
-        layout: { 
-            // 1. CHOVÁNÍ ŠIPKY (Rotuje přesně s mapou)
-            'icon-image': ['get', 'iconId'], 
-            'icon-allow-overlap': true, 
-            'icon-ignore-placement': true,
-            'icon-rotation-alignment': 'map', 
-            'icon-rotate': ['get', 'heading'], 
-
-            // 2. CHOVÁNÍ TEXTU (Zůstává vždy vodorovně čitelný!)
-            'text-field': ['get', 'route'],
-            'text-font': ['Open Sans Bold'],
-            'text-size': 11,
-            'text-allow-overlap': true,
-            'text-ignore-placement': true,
-            'text-rotation-alignment': 'viewport',
-            
-            'symbol-sort-key': ['get', 'sortKey'] 
-        },
-        paint: {
-            'text-color': '#FFFFFF',
-            'text-halo-color': 'rgba(0,0,0,0.85)',
-            'text-halo-width': 1.5 
-        }
-    });
-
     panelClose.addEventListener('click', closeDetailPanel);
-
-    map.on('click', (e) => {
-        if (e.defaultPrevented) return;
-
-        const padding = 10;
-        const bbox = [
-            [e.point.x - padding, e.point.y - padding],
-            [e.point.x + padding, e.point.y + padding]
-        ];
-
-        const features = map.queryRenderedFeatures(bbox, { layers: ['vehicles-layer'] });
-
-        if (!features || features.length === 0) {
-            closeDetailPanel();
-            return;
-        }
-
-        if (features.length === 1) {
-            openVehicleDetail(features[0].properties);
-        } else if (features.length <= 20) {
-            showEntitySelection(features);
-        } else {
-            showTooManyEntitiesError();
-        }
-    });
-
-    map.on('mouseenter', 'vehicles-layer', () => map.getCanvas().style.cursor = 'pointer');
-    map.on('mouseleave', 'vehicles-layer', () => map.getCanvas().style.cursor = '');
 
     updateData();
     setInterval(updateData, 15000);
 });
+
+// --- INTELIGENTNÍ OTÁČENÍ ŠIPEK BĚHEM ROTACE MAPY ---
+map.on('rotate', () => {
+    const bearing = map.getBearing();
+    for (const markerObj of activeMarkers.values()) {
+        if (!markerObj.isCircle) {
+            const arrow = markerObj.element.querySelector('.veh-arrow');
+            if (arrow) {
+                // Skutečný směr vozidla minus natočení obrazovky
+                arrow.style.transform = `rotate(${Math.round(markerObj.heading - bearing)}deg)`;
+            }
+        }
+    }
+});
+
+// --- PROSTOROVÝ KLIK (NAHRAZUJE WEBGL QUERY) ---
+function handleMarkerClick(lon, lat) {
+    // Převedeme GPS kliknutí na pixely obrazovky
+    const clickPoint = map.project([lon, lat]);
+    const radius = 25; // Okolí 25 pixelů pro detekci shluku
+
+    const features = [];
+    for (const markerObj of activeMarkers.values()) {
+        const pt = map.project([markerObj.props.lon, markerObj.props.lat]);
+        const dist = Math.sqrt(Math.pow(pt.x - clickPoint.x, 2) + Math.pow(pt.y - clickPoint.y, 2));
+        if (dist <= radius) {
+            features.push({ properties: markerObj.props });
+        }
+    }
+
+    if (features.length === 0) {
+        closeDetailPanel();
+    } else if (features.length === 1) {
+        openVehicleDetail(features[0].properties);
+    } else if (features.length <= 20) {
+        showEntitySelection(features);
+    } else {
+        showTooManyEntitiesError();
+    }
+}
 
 // --- CENTRÁLNÍ FUNKCE PRO OTEVŘENÍ DETAILU ---
 async function openVehicleDetail(props) {
@@ -330,7 +312,6 @@ async function showEntitySelection(features) {
     });
 }
 
-// --- PŘÍLIŠ MNOHO ENTIT ---
 function showTooManyEntitiesError() {
     panelBody.style.padding = '15px';
     panelBody.style.display = 'block';
@@ -350,7 +331,6 @@ function showTooManyEntitiesError() {
     `;
 }
 
-// --- POHLED 1: VYKRESLENÍ DETAILŮ O VOZIDLE ---
 function renderDetailView() {
     panelBody.style.padding = '15px';
     panelBody.style.overflowY = 'auto';
@@ -377,11 +357,8 @@ function renderDetailView() {
     if (d.delay === 'V cíli') {
         delayColor = '#7f8c8d'; 
         delayText = 'V cíli';
-        activeTrainData.heading = null;
-        if (typeof updateData === "function") {
-            // Překreslíme data na mapě (šipka -> kroužek)
-            updateData(); 
-        }
+        if (activeTrainData.props) activeTrainData.props.heading = null;
+        if (typeof updateData === "function") updateData(); 
     } else if (d.delay.startsWith('-')) {
         delayColor = '#bada55'; 
         delayText = d.delay;    
@@ -407,7 +384,6 @@ function renderDetailView() {
     document.getElementById('show-timetable-btn').addEventListener('click', switchToTimetable);
 }
 
-// --- POHLED 2: PŘEPNUTÍ A VYKRESLENÍ JÍZDNÍHO ŘÁDU ---
 async function switchToTimetable() {
     isTimetableOpen = true;
     updateURL();
@@ -424,7 +400,6 @@ async function switchToTimetable() {
             try { parsedAttributes = typeof p.attributes === 'string' ? JSON.parse(p.attributes) : p.attributes; } 
             catch (e) { parsedAttributes = p.attributes; }
         }
-
         activeTrainData.timetable = await providerObj.getTimetable(p.id, parsedAttributes);
     }
 
@@ -481,17 +456,12 @@ async function switchToTimetable() {
             };
 
             const nadHtml = stop.isNAD ? `<span class="nad-badge" title="Náhradní doprava v tomto úseku">NAD</span>` : '';
-            
             const isCurrentStop = (stop.station.trim() === d.stop.trim());
             const rowId = isCurrentStop ? 'id="current-stop-row"' : '';
             
             let stationStyle = '';
-            if (stop.isPassing) {
-                stationStyle += 'font-weight: normal; font-style: italic; color: #bbb; ';
-            }
-            if (isCurrentStop) {
-                stationStyle += 'color: #e74c3c; ';
-            }
+            if (stop.isPassing) stationStyle += 'font-weight: normal; font-style: italic; color: #bbb; ';
+            if (isCurrentStop) stationStyle += 'color: #e74c3c; ';
 
             return `
             <tr ${rowId}>
@@ -539,7 +509,7 @@ function closeDetailPanel() {
     map.getSource('selected-route').setData({ type: 'Feature', geometry: { type: 'LineString', coordinates: [] } });
 }
 
-// --- AKTUALIZACE DAT ZE SERVERŮ S ŘAZENÍM VRSTEV ---
+// --- HLAVNÍ FUNKCE: AKTUALIZACE DAT A POZICOVÁNÍ DOM MARKERŮ ---
 async function updateData() {
     try {
         statusDiv.innerText = 'Aktualizuji data...';
@@ -557,9 +527,7 @@ async function updateData() {
         
         allVehicles = allVehicles.filter(v => {
             if (v.provider === 'VDV') {
-                if (v.attributes && v.attributes.text && pidFullLines.has(v.attributes.text)) {
-                    return false; 
-                }
+                if (v.attributes && v.attributes.text && pidFullLines.has(v.attributes.text)) return false; 
             }
             return true;
         });
@@ -567,69 +535,97 @@ async function updateData() {
         deduplicator.processData(allVehicles);
         const cleanData = deduplicator.getCleanData();
 
-        const sortedData = cleanData.sort((a, b) => {
-            const getZIndex = (p) => {
-                if (p === 'GRAPP') return 4;
-                if (p === 'IDS JMK') return 3;
-                if (p === 'PID') return 2;
-                if (p === 'VDV') return 1;
-                return 0; 
-            };
-            return getZIndex(a.provider) - getZIndex(b.provider);
+        const currentIds = new Set();
+        const mapBearing = map.getBearing();
+
+        cleanData.forEach(v => {
+            if (v.lat === undefined || v.lon === undefined || v.lat === null || v.lon === null) return;
+
+            let matchId = v.id;
+            if (v.provider === 'GRAPP' && v.globalMatchId) matchId = v.globalMatchId.replace(/ /g, '_');
+            else if (v.text) matchId = v.text.replace(/\//g, '_').replace(/ /g, '_');
+            else if (v.route && v.runNumber) matchId = `${v.route}_${v.runNumber}`;
+
+            currentIds.add(matchId);
+
+            const isCircle = v.heading === null || v.heading === undefined;
+            const safeHeading = isCircle ? 0 : Math.round(v.heading);
+            const color = getProviderColor(v.provider);
+
+            // Perfektní hloubkový Z-Index 2.5D
+            // Vozidla na jihu (nižší lat) dostanou vyšší Z-index a překryjí ta severní.
+            const zIndex = getProviderZIndex(v.provider) + Math.round((52 - v.lat) * 10000);
+
+            let markerObj = activeMarkers.get(matchId);
+
+            if (!markerObj) {
+                const el = document.createElement('div');
+                el.className = 'veh-marker';
+                el.style.zIndex = zIndex;
+
+                el.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    handleMarkerClick(v.lon, v.lat);
+                });
+
+                const mapMarker = new maplibregl.Marker({ element: el })
+                    .setLngLat([v.lon, v.lat])
+                    .addTo(map);
+
+                markerObj = { element: el, mapMarker, props: v, isCircle, heading: safeHeading };
+                activeMarkers.set(matchId, markerObj);
+            } else {
+                markerObj.mapMarker.setLngLat([v.lon, v.lat]);
+                markerObj.element.style.zIndex = zIndex;
+                markerObj.props = v;
+                markerObj.isCircle = isCircle;
+                markerObj.heading = safeHeading;
+            }
+
+            // Vykreslení ikonky + textu
+            let innerHtml = '';
+            if (isCircle) {
+                innerHtml = `<div style="background-color: ${color}; border: 2px solid rgba(0,0,0,0.85); border-radius: 50%; width: 14px; height: 14px; box-shadow: 0 0 3px rgba(0,0,0,0.5);"></div>`;
+            } else {
+                const arrowRot = safeHeading - mapBearing;
+                // Moderní a super ostrá SVG střelka 
+                innerHtml = `
+                    <div class="veh-arrow" style="transform: rotate(${arrowRot}deg); filter: drop-shadow(0px 0px 1px rgba(0,0,0,0.8));">
+                        <svg viewBox="0 0 24 24" width="28" height="28" style="overflow:visible;">
+                            <path d="M12,2 L3,22 L12,18 L21,22 Z" fill="${color}" stroke="#fff" stroke-width="1.5" stroke-linejoin="round" />
+                        </svg>
+                    </div>
+                `;
+            }
+            innerHtml += `<div class="veh-label">${v.route}</div>`;
+
+            markerObj.element.innerHTML = innerHtml;
         });
 
-        const features = sortedData
-            .filter(v => v.lat !== undefined && v.lon !== undefined && v.lat !== null && v.lon !== null)
-            .map(v => {
-                // Posíláme do Canvasu, jestli se má nakreslit kroužek, nebo šipka
-                const isCircle = v.heading === null || v.heading === undefined;
-                // Vytvoříme/Získáme čistý štítek (base icon)
-                const iconId = getOrCreateBaseIcon(map, v.provider, isCircle);
-                
-                // Do MapLibre teď musíme poslat exact heading, protože o rotaci se stará on sám!
-                const safeHeading = isCircle ? 0 : Math.round(v.heading);
-
-                const safeProps = { 
-                    ...v, 
-                    heading: safeHeading,
-                    iconId: iconId,
-                    sortKey: v.provider === 'GRAPP' ? 2 : 1
-                };
-                
-                if (safeProps.attributes) {
-                    safeProps.attributes = JSON.stringify(safeProps.attributes);
-                }
-
-                return { type: 'Feature', geometry: { type: 'Point', coordinates: [v.lon, v.lat] }, properties: safeProps };
-            });
-
-        map.getSource('vehicles').setData({ type: 'FeatureCollection', features });
-        statusDiv.innerText = `Spojů na mapě: ${features.length}`;
-
-        if (targetVehicleId && !initialClickDone) {
-            const targetFeature = features.find(f => {
-                const v = f.properties;
-                let matchId = v.id;
-                if (v.provider === 'GRAPP' && v.globalMatchId) matchId = v.globalMatchId.replace(/ /g, '_');
-                else if (v.text) matchId = v.text.replace(/\//g, '_').replace(/ /g, '_');
-                else if (v.route && v.runNumber) matchId = `${v.route}_${v.runNumber}`;
-                return matchId === targetVehicleId;
-            });
-
-            if (targetFeature) {
-                initialClickDone = true;
-                openVehicleDetail(targetFeature.properties);
+        // Úklid vozidel, která odjela
+        for (const [id, markerObj] of activeMarkers.entries()) {
+            if (!currentIds.has(id)) {
+                markerObj.mapMarker.remove();
+                activeMarkers.delete(id);
             }
         }
 
-        // --- AUTOMATICKÁ AKTUALIZACE POLOHY UŽIVATELE ---
-        if (isUserLocationActive) {
-            updateUserLocation(false); 
+        statusDiv.innerText = `Spojů na mapě: ${activeMarkers.size}`;
+
+        if (targetVehicleId && !initialClickDone) {
+            const targetObj = activeMarkers.get(targetVehicleId);
+            if (targetObj) {
+                initialClickDone = true;
+                openVehicleDetail(targetObj.props);
+            }
         }
+
+        if (isUserLocationActive) updateUserLocation(false); 
 
     } catch (err) { statusDiv.innerText = "Chyba při načítání dat."; }
 }
 
+// --- GEOLOKACE A OSTATNÍ OVLÁDACÍ PRVKY ZŮSTÁVAJÍ ---
 const locateBtn = document.getElementById('locate-btn');
 let userLocationMarker = null;
 let isUserLocationActive = false; 
@@ -639,9 +635,7 @@ function updateUserLocation(flyToUser = false) {
         navigator.geolocation.getCurrentPosition(position => { 
             const coords = [position.coords.longitude, position.coords.latitude];
             
-            if (flyToUser) {
-                map.flyTo({ center: coords, zoom: 14 }); 
-            }
+            if (flyToUser) map.flyTo({ center: coords, zoom: 14 }); 
             
             if (!userLocationMarker) {
                 const el = document.createElement('div');
@@ -654,9 +648,7 @@ function updateUserLocation(flyToUser = false) {
             }
         }, (err) => {
             console.warn("Nepodařilo se aktualizovat polohu uživatele:", err);
-            if (flyToUser) {
-                alert("Nepodařilo se zjistit vaši polohu. Zkontrolujte oprávnění prohlížeče.");
-            }
+            if (flyToUser) alert("Nepodařilo se zjistit vaši polohu.");
         });
     } else if (flyToUser) {
         alert("Geolokace není podporována vaším prohlížečem.");
@@ -675,7 +667,6 @@ compassBtn.id = 'compass-btn';
 compassBtn.innerHTML = `<svg viewBox="0 0 24 24" width="22" height="22" fill="#fff"><path d="M12 2L4.5 20.29l.71.71L12 18l6.79 3 .71-.71z"/></svg>`;
 document.body.appendChild(compassBtn);
 
-// ZMĚNA: Tlačítko teď resetuje už jen čistě Sever, protože Pitch jsme zakázali
 compassBtn.addEventListener('click', () => { map.resetNorth({ duration: 500 }); });
 
 function updateCompass() { 
