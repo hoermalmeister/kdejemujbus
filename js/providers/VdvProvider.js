@@ -132,24 +132,8 @@ export default class VdvProvider extends BaseProvider {
     }
 
     async getRouteInfo(globalId, attributes) {
-        // Musíme mít plné číslo (např. "841129/25") z funkce getDetails
-        if (!attributes || !attributes.timetableRoute) return null;
-        
-        // Převod na klíčový formát pro backend ("841129_25")
-        const shapeKey = attributes.timetableRoute.replace('/', '_');
-        
-        try {
-            // Přímý a bleskový dotaz na náš Můstek
-            const response = await fetch(`https://grapp-bridge.onrender.com/vdv/route?id=${shapeKey}`);
-            if (!response.ok) return null;
-            
-            const data = await response.json();
-            return data.shape; // Vrátí GeoJSON body silnice
-
-        } catch (error) {
-            console.warn("Chyba při stahování trasy VDV:", error.message);
-            return null;
-        }
+        // Tuto funkci jsme zatím deaktivovali, vyřešíme později na míru
+        return null;
     }
 
     async getTimetable(globalId, attributes) {
