@@ -376,7 +376,7 @@ function renderDetailView() {
         let minVal = parseInt(d.delay);
         if (minVal > 15) delayColor = '#e74c3c';
         else if (minVal > 5) delayColor = '#f39c12';
-        delayText = '+' + d.delay; // Zde app.js přidává to jediné správné plusko
+        delayText = d.delay; // Zde app.js přidává to jediné správné plusko
     }
     
     if (d.delay.startsWith('-')) {
@@ -385,7 +385,7 @@ function renderDetailView() {
         let minVal = parseInt(d.delay);
         if (minVal > 15) delayColor = '#e74c3c';
         else if (minVal > 5) delayColor = '#f39c12';
-        delayText = '+' + d.delay;
+        delayText = d.delay;
     }
     
     panelBody.innerHTML = `
