@@ -98,8 +98,9 @@ function updateURL() {
 map.on('moveend', updateURL);
 map.on('zoomend', updateURL);
 
-// --- GENEROVÁNÍ ZÁKLADNÍCH TVARŮ (Pouze šipky a kroužky) ---
+// --- GENEROVÁNÍ ZÁKLADNÍCH TVARŮ (Bez textu a fixních úhlů!) ---
 function getOrCreateBaseIcon(map, provider, isCircle) {
+    // Generujeme pouze barvu a tvar, natočení a text řeší MapLibre WebGL Engine
     const shape = isCircle ? 'circle' : 'arrow';
     const iconId = `veh-base-${provider}-${shape}`;
 
@@ -109,6 +110,7 @@ function getOrCreateBaseIcon(map, provider, isCircle) {
     const canvas = document.createElement('canvas');
     canvas.width = size * 2; canvas.height = size * 2;
     const ctx = canvas.getContext('2d');
+    
     ctx.scale(2, 2); ctx.translate(size/2, size/2); 
 
     let fillColor = getProviderColor(provider);
@@ -125,28 +127,6 @@ function getOrCreateBaseIcon(map, provider, isCircle) {
     return iconId;
 }
 
-// --- GENEROVÁNÍ TEXTOVÝCH ŠTÍTKŮ (Starý dobrý Canvas!) ---
-function getOrCreateTextIcon(map, text) {
-    if (!text) return null;
-    const iconId = `veh-text-${text}`;
-    if (map.hasImage(iconId)) return iconId;
-
-    const size = 44;
-    const canvas = document.createElement('canvas');
-    canvas.width = size * 2; canvas.height = size * 2;
-    const ctx = canvas.getContext('2d');
-    ctx.scale(2, 2); ctx.translate(size/2, size/2);
-
-    // Tvoje původní bezchybné formátování fontu
-    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-    ctx.font = 'bold 10px sans-serif'; 
-    ctx.lineWidth = 3; ctx.strokeStyle = 'rgba(0,0,0,0.85)'; ctx.strokeText(text, 0, 0);
-    ctx.fillStyle = '#FFFFFF'; ctx.fillText(text, 0, 0);
-
-    map.addImage(iconId, ctx.getImageData(0, 0, size * 2, size * 2), { pixelRatio: 2 });
-    return iconId;
-}
-
 // --- PO NAČTENÍ MAPY ---
 map.on('load', () => {
     map.addSource('selected-route', { type: 'geojson', data: { type: 'Feature', geometry: { type: 'LineString', coordinates: [] } } });
@@ -154,32 +134,37 @@ map.on('load', () => {
 
     map.addSource('vehicles', { type: 'geojson', data: { type: 'FeatureCollection', features: [] } });
     
-    // 1. VRSTVA PRO ŠIPKY A KROUŽKY (Otáčí se podle mapy)
+    // Zásadní úprava: Vrstva má oddělené chování ikony a textu
     map.addLayer({ 
-        id: 'vehicles-base-layer', 
+        id: 'vehicles-layer', 
         type: 'symbol', 
         source: 'vehicles', 
         layout: { 
-            'icon-image': ['get', 'baseIconId'], 
+            // 1. CHOVÁNÍ ŠIPKY (Rotuje přesně s mapou)
+            'icon-image': ['get', 'iconId'], 
             'icon-allow-overlap': true, 
             'icon-ignore-placement': true,
-            'icon-rotation-alignment': 'map', // Rotuje s mapou
+            'icon-rotation-alignment': 'map', 
             'icon-rotate': ['get', 'heading'], 
-            'symbol-sort-key': ['get', 'sortKey'] 
-        }
-    });
 
-    // 2. VRSTVA PRO ČÍSLA LINEK (Zůstává vodorovná)
-    map.addLayer({ 
-        id: 'vehicles-text-layer', 
-        type: 'symbol', 
-        source: 'vehicles', 
-        layout: { 
-            'icon-image': ['get', 'textIconId'], // Saje vygenerovaný obrázek z Canvasu
-            'icon-allow-overlap': true, 
-            'icon-ignore-placement': true,
-            'icon-rotation-alignment': 'viewport', // Drží se vodorovně vůči obrazovce!
+            // 2. CHOVÁNÍ TEXTU (Zůstává vždy vodorovně čitelný!)
+            'text-field': ['get', 'route'],
+            
+            // --- OPRAVA ZDE ---
+            // 'Open Sans Bold' na demotiles neexistuje, použijeme Regular
+            'text-font': ['Open Sans Regular'], 
+            
+            'text-size': 11, // Můžeš malinko zvětšit (např. z 10 na 11), když už to není Bold
+            'text-allow-overlap': true,
+            'text-ignore-placement': true,
+            'text-rotation-alignment': 'viewport', 
+            
             'symbol-sort-key': ['get', 'sortKey'] 
+        },
+        paint: {
+            'text-color': '#FFFFFF',
+            'text-halo-color': 'rgba(0,0,0,0.85)',
+            'text-halo-width': 1.5 
         }
     });
 
@@ -194,7 +179,7 @@ map.on('load', () => {
             [e.point.x + padding, e.point.y + padding]
         ];
 
-        const features = map.queryRenderedFeatures(bbox, { layers: ['vehicles-base-layer'] });
+        const features = map.queryRenderedFeatures(bbox, { layers: ['vehicles-layer'] });
 
         if (!features || features.length === 0) {
             closeDetailPanel();
@@ -601,19 +586,18 @@ async function updateData() {
         const features = sortedData
             .filter(v => v.lat !== undefined && v.lon !== undefined && v.lat !== null && v.lon !== null)
             .map(v => {
+                // Posíláme do Canvasu, jestli se má nakreslit kroužek, nebo šipka
                 const isCircle = v.heading === null || v.heading === undefined;
+                // Vytvoříme/Získáme čistý štítek (base icon)
+                const iconId = getOrCreateBaseIcon(map, v.provider, isCircle);
                 
-                // Vygenerujeme si oba obrázky!
-                const baseIconId = getOrCreateBaseIcon(map, v.provider, isCircle);
-                const textIconId = getOrCreateTextIcon(map, v.route);
-                
+                // Do MapLibre teď musíme poslat exact heading, protože o rotaci se stará on sám!
                 const safeHeading = isCircle ? 0 : Math.round(v.heading);
 
                 const safeProps = { 
                     ...v, 
                     heading: safeHeading,
-                    baseIconId: baseIconId, // Pro 1. vrstvu
-                    textIconId: textIconId, // Pro 2. vrstvu
+                    iconId: iconId,
                     sortKey: v.provider === 'GRAPP' ? 2 : 1
                 };
                 
