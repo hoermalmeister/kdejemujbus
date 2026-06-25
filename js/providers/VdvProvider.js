@@ -7,6 +7,7 @@ export default class VdvProvider extends BaseProvider {
         this.apiUrl = 'https://grapp-bridge.onrender.com/vdv';
         this.detailUrl = 'https://grapp-bridge.onrender.com/vdv/detail?id=';
         this.timetableUrl = 'https://grapp-bridge.onrender.com/vdv/timetable?id=';
+        this.finishedVehicles = new Set();
     }
 
     async fetchData() {
@@ -115,6 +116,7 @@ export default class VdvProvider extends BaseProvider {
             delayNum = 0;
             attributes.delay = 0; // Jízdní řád se tváří, že zpoždění není
             isAtDestination = true;
+            this.finishedVehicles.add(attributes.id);
         }
 
         return { 
@@ -212,6 +214,10 @@ export default class VdvProvider extends BaseProvider {
             let shortRoute = trip.text.slice(-3);
             let vehicleHeading = (trip.heading !== undefined && trip.heading !== null) ? Math.round(trip.heading) : null;
 
+            if (this.finishedVehicles.has(trip.id)) {
+                vehicleHeading = null;
+            }
+            
             vehicles.push({
                 id: `vdv_${trip.id}`,
                 provider: this.providerName,
