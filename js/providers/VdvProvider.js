@@ -201,7 +201,7 @@ export default class VdvProvider extends BaseProvider {
         
         for (const trip of rawData) {
             if (trip.traction === "TRAIN") continue;
-            if (!trip.text || trip.text.length <= 3) continue;
+            if (!trip.text || trip.text.length === 3) continue;
 
             let delay = trip.delay;
             if (delay === -2147483648) delay = 0;
