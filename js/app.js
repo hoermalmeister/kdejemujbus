@@ -368,7 +368,10 @@ function renderDetailView() {
     if (d.delay === 'V cíli') {
         delayColor = '#7f8c8d'; // Dispečerská šedá (nebo nech zelenou)
         delayText = 'V cíli';
-        activeTrainData.heading = null; // Okamžitě změní šipku na mapě na kroužek!
+        activeTrainData.heading = null;
+        if (typeof renderMarkers === "function") {
+            renderMarkers(); 
+        }
     } else if (d.delay.startsWith('-')) {
         delayColor = '#bada55'; 
         delayText = d.delay;    
