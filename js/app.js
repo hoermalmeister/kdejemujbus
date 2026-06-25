@@ -84,7 +84,7 @@ function updateURL() {
 map.on('moveend', updateURL);
 map.on('zoomend', updateURL);
 
-// --- GENEROVÁNÍ DOKONALÝCH SAMOLEPEK (ŠIPKA I TEXT V JEDNOM) ---
+// --- GENEROVÁNÍ ŠIPEK ---
 function getOrCreateIcon(map, provider, routeText, heading) {
     const isCircle = heading === null || heading === undefined;
     // Zaokrouhlení azimutu, aby se negenerovalo zbytečně moc obrázků a RAM zůstala čistá
@@ -108,26 +108,15 @@ function getOrCreateIcon(map, provider, routeText, heading) {
         ctx.rotate(safeHeading * Math.PI / 180);
         ctx.scale(1.4, 1.4); ctx.translate(-11, -15.5); 
         
-        ctx.shadowColor = 'rgba(0,0,0,0.8)';
-        ctx.shadowBlur = 2;
         const path = new Path2D("M 10.97,2.31 C 10.97,2.31 2.03,23.03 2.03,23.03 2.03,23.03 11.00,20.94 11.00,20.94 11.00,20.94 20.00,23.00 20.00,23.00 20.00,23.00 10.97,2.31 10.97,2.31 Z");
         ctx.fillStyle = fillColor; ctx.fill(path);
-        
-        // Zvýrazníme okraje šipky pro lepší čitelnost
-        ctx.strokeStyle = '#FFFFFF';
-        ctx.lineWidth = 1;
-        ctx.stroke(path);
     } else {
-        ctx.shadowColor = 'rgba(0,0,0,0.8)';
-        ctx.shadowBlur = 2;
         ctx.beginPath(); ctx.arc(0, 0, 12, 0, 2 * Math.PI); 
         ctx.fillStyle = fillColor; ctx.fill();
-        ctx.strokeStyle = '#FFFFFF'; ctx.lineWidth = 1.5; ctx.stroke();
     }
     ctx.restore(); 
 
     // Text zůstává vodorovně vzhledem k obrázku 
-    // (Při rotaci mapy se otočí i tento obrázek, což je tvůj přijatý kompromis)
     if (routeText) {
         ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
         ctx.font = 'bold 11px sans-serif'; 
