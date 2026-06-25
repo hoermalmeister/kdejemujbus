@@ -544,11 +544,19 @@ async function updateData() {
         let allVehicles = [];
         results.forEach((result) => { if (result.status === 'fulfilled') allVehicles = allVehicles.concat(result.value); });
 
-        const pidLines = new Set(allVehicles.filter(v => v.provider === 'PID').map(v => v.route));
+        const pidFullLines = new Set();
+        allVehicles.forEach(v => {
+            if (v.provider === 'PID' && v.attributes && v.attributes.cisjrLine) {
+                pidFullLines.add(v.attributes.cisjrLine);
+            }
+        });
+        
         allVehicles = allVehicles.filter(v => {
             if (v.provider === 'VDV') {
-                // Pokud linku s tímto číslem už monitoruje PID, z VDV ji nemilosrdně smažeme
-                if (pidLines.has(v.route)) return false; 
+                // Pokud celá 6místná VDV linka existuje v PIDu, vymažeme ji
+                if (v.attributes && v.attributes.text && pidFullLines.has(v.attributes.text)) {
+                    return false; 
+                }
             }
             return true;
         });
