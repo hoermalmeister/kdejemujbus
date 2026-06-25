@@ -38,13 +38,12 @@ function getProviderColor(provider) {
     return '#ff8080'; 
 }
 
-// --- INICIALIZACE MAPY (Funkční fonty a blokace 3D) ---
+// --- INICIALIZACE MAPY ---
 const map = new maplibregl.Map({
     container: 'map',
     style: {
         version: 8,
-        // Tento server nevyhodí 404 pro háčky/čárky ani tučné písmo!
-        glyphs: "https://fonts.openmaptiles.org/{fontstack}/{range}.pbf", 
+        // Fonty už nepotřebujeme stahovat, řeší to Canvas
         sources: { 
             'carto-dark': { 
                 type: 'raster', 
@@ -85,11 +84,12 @@ function updateURL() {
 map.on('moveend', updateURL);
 map.on('zoomend', updateURL);
 
-// --- GENEROVÁNÍ ZÁKLADNÍCH TVARŮ ---
-function getOrCreateBaseIcon(map, provider, isCircle) {
-    // Generuje čistý podklad (šipka směřující vždy nahoru), otáčí ji grafická karta
-    const shape = isCircle ? 'circle' : 'arrow';
-    const iconId = `veh-base-${provider}-${shape}`;
+// --- GENEROVÁNÍ DOKONALÝCH SAMOLEPEK (ŠIPKA I TEXT V JEDNOM) ---
+function getOrCreateIcon(map, provider, routeText, heading) {
+    const isCircle = heading === null || heading === undefined;
+    // Zaokrouhlení azimutu, aby se negenerovalo zbytečně moc obrázků a RAM zůstala čistá
+    const safeHeading = isCircle ? 0 : Math.round(heading / 5) * 5;
+    const iconId = `veh-${provider}-${routeText}-${safeHeading}`;
 
     if (map.hasImage(iconId)) return iconId;
 
@@ -102,12 +102,37 @@ function getOrCreateBaseIcon(map, provider, isCircle) {
 
     let fillColor = getProviderColor(provider);
 
+    ctx.save();
     if (!isCircle) {
+        // Rotujeme pouze šipku vůči Canvasu
+        ctx.rotate(safeHeading * Math.PI / 180);
         ctx.scale(1.4, 1.4); ctx.translate(-11, -15.5); 
+        
+        ctx.shadowColor = 'rgba(0,0,0,0.8)';
+        ctx.shadowBlur = 2;
         const path = new Path2D("M 10.97,2.31 C 10.97,2.31 2.03,23.03 2.03,23.03 2.03,23.03 11.00,20.94 11.00,20.94 11.00,20.94 20.00,23.00 20.00,23.00 20.00,23.00 10.97,2.31 10.97,2.31 Z");
         ctx.fillStyle = fillColor; ctx.fill(path);
+        
+        // Zvýrazníme okraje šipky pro lepší čitelnost
+        ctx.strokeStyle = '#FFFFFF';
+        ctx.lineWidth = 1;
+        ctx.stroke(path);
     } else {
-        ctx.beginPath(); ctx.arc(0, 0, 12, 0, 2 * Math.PI); ctx.fillStyle = fillColor; ctx.fill();
+        ctx.shadowColor = 'rgba(0,0,0,0.8)';
+        ctx.shadowBlur = 2;
+        ctx.beginPath(); ctx.arc(0, 0, 12, 0, 2 * Math.PI); 
+        ctx.fillStyle = fillColor; ctx.fill();
+        ctx.strokeStyle = '#FFFFFF'; ctx.lineWidth = 1.5; ctx.stroke();
+    }
+    ctx.restore(); 
+
+    // Text zůstává vodorovně vzhledem k obrázku 
+    // (Při rotaci mapy se otočí i tento obrázek, což je tvůj přijatý kompromis)
+    if (routeText) {
+        ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+        ctx.font = 'bold 11px sans-serif'; 
+        ctx.lineWidth = 3; ctx.strokeStyle = 'rgba(0,0,0,0.85)'; ctx.strokeText(routeText, 0, 0);
+        ctx.fillStyle = '#FFFFFF'; ctx.fillText(routeText, 0, 0);
     }
 
     map.addImage(iconId, ctx.getImageData(0, 0, size * 2, size * 2), { pixelRatio: 2 });
@@ -121,34 +146,19 @@ map.on('load', () => {
 
     map.addSource('vehicles', { type: 'geojson', data: { type: 'FeatureCollection', features: [] } });
     
-    // --- TVOJE SPRÁVNÁ, JEDINÁ VRSTVA ---
+    // --- JEDINÁ ABSOLUTNĚ SPRÁVNÁ VRSTVA ---
     map.addLayer({ 
         id: 'vehicles-layer', 
         type: 'symbol', 
         source: 'vehicles', 
         layout: { 
-            // Vizuál šipky
             'icon-image': ['get', 'iconId'], 
             'icon-allow-overlap': true, 
             'icon-ignore-placement': true,
-            'icon-rotation-alignment': 'map', // Šipka rotuje s mapou
-            'icon-rotate': ['get', 'heading'], 
-
-            // Vizuál textu
-            'text-field': ['get', 'route'],
-            'text-font': ['Open Sans Bold'], // Teď už funguje perfektně
-            'text-size': 11,
-            'text-allow-overlap': true,
-            'text-ignore-placement': true,
-            'text-rotation-alignment': 'viewport', // Text drží vodorovně
-            
-            // Řazení Z-indexu (překrývání) - Vše ve stejné vrstvě
+            // Tohle zařídí, že samolepka rotuje přesně s mapou (šipka udrží azimut, text se natočí)
+            'icon-rotation-alignment': 'map', 
+            // Třídění Z-Indexu nyní aplikujeme na spojený blok ikona+text
             'symbol-sort-key': ['get', 'sortKey'] 
-        },
-        paint: {
-            'text-color': '#FFFFFF',
-            'text-halo-color': 'rgba(0,0,0,0.85)',
-            'text-halo-width': 1.5 
         }
     });
 
@@ -542,18 +552,15 @@ async function updateData() {
         const features = cleanData
             .filter(v => v.lat !== undefined && v.lon !== undefined && v.lat !== null && v.lon !== null)
             .map(v => {
-                const isCircle = v.heading === null || v.heading === undefined;
-                const iconId = getOrCreateBaseIcon(map, v.provider, isCircle);
-                const safeHeading = isCircle ? 0 : Math.round(v.heading);
+                // Vytvoříme/Získáme ikonu z Canvasu s obsaženým textem
+                const iconId = getOrCreateIcon(map, v.provider, v.route, v.heading);
 
                 // --- MATEMATIKA PRO DOKONALÉ PŘEKRÝVÁNÍ (Z-INDEX) ---
                 const zIndexBase = { 'GRAPP': 400000, 'IDS JMK': 300000, 'PID': 200000, 'VDV': 100000 }[v.provider] || 0;
-                // Přičteme logiku zeměpisné šířky, aby vozidla "blíže kameře" překrývala ta za nimi
                 const sortKey = zIndexBase + Math.round((52 - v.lat) * 10000);
 
                 const safeProps = { 
                     ...v, 
-                    heading: safeHeading,
                     iconId: iconId,
                     sortKey: sortKey
                 };
