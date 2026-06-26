@@ -38,7 +38,7 @@ export default class DukProvider extends BaseProvider {
             let delay = trip.DelaySign ? trip.DelaySign : 'Neznámé';
 
             vehicles.push({
-                id: trip.ID, // Ponecháme si čisté ID pro stahování detailu
+                id: `duk_${trip.ID}`, // Ponecháme si čisté ID pro stahování detailu
                 provider: this.providerName,
                 lat: trip.Lat,
                 lon: trip.Lng, 
@@ -80,7 +80,7 @@ export default class DukProvider extends BaseProvider {
     async getDetails(globalId, attributes) {
         if (!attributes) return null;
 
-        const doc = await this.fetchFullDetails(attributes.id);
+        const doc = await this.fetchFullDetails(attributes.ID);
         if (!doc) {
             // Nouzový fallback, pokud selže API
             return {
