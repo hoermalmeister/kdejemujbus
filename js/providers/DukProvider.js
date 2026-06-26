@@ -60,11 +60,9 @@ export default class DukProvider extends BaseProvider {
     // --- STAŽENÍ A PARSOVÁNÍ HTML DETAILU ---
     async fetchFullDetails(id) {
         try {
-            const response = await fetch(this.detailUrl, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ id: id })
-            });
+            // ZMĚNA: Používáme čistý GET, id předáváme do URL
+            const response = await fetch(`${this.detailUrl}?id=${id}`);
+            
             if (!response.ok) return null;
             
             const htmlString = await response.text();
