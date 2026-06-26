@@ -208,11 +208,17 @@ export default class VdvProvider extends BaseProvider {
             if (trip.traction === "TRAIN") continue;
             if (!trip.text || trip.text.length === 3) continue;
 
+            if (trip.text === '795832' || trip.text === '795815') continue;
+
             let delay = trip.delay;
             if (delay === -2147483648) delay = 0;
 
             let headsign = trip.finalStopName || 'Neznámý cíl';
             if (headsign.includes('N/a')) headsign = 'Neznámý cíl';
+            
+            if (trip.text === '841334' && headsign.replace(/\s+/g, '').includes('Tišnov')) {
+                continue;
+            }
             
             let shortRoute = trip.text.slice(-3);
             let vehicleHeading = (trip.heading !== undefined && trip.heading !== null) ? Math.round(trip.heading) : null;
