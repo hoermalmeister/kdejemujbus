@@ -135,22 +135,25 @@ export default class IredoProvider extends BaseProvider {
         if (fullData && fullData.stations && fullData.stations.length > 0) {
             const passedStops = fullData.stations.filter(s => s.passed === true);
             if (passedStops.length > 0) {
-                currentStop = `Odjel z: ${passedStops[passedStops.length - 1].name}`;
+                // Ponechán POUZE čistý název stanice (díky tomu zafunguje červená barva v JŘ)
+                currentStop = passedStops[passedStops.length - 1].name;
             } else {
-                currentStop = `Výchozí: ${fullData.stations[0].name}`;
+                currentStop = fullData.stations[0].name;
             }
         }
 
+        // Vykousnutí posledních 3 čísel z CISJR linky
+        const shortLine = attributes.cisjrLine.slice(-3);
+
         return {
-            route: `${attributes.cisjrLine}/${attributes.cisjrRun}`, // Tvůj čistý požadavek na titulku
-            timetableRoute: `${attributes.cisjrLine}/${attributes.cisjrRun}`,
+            route: `${shortLine}/${attributes.cisjrRun}`, 
+            timetableRoute: `${shortLine}/${attributes.cisjrRun}`,
             destination: attributes.dest || 'Neznámý cíl',
             stop: currentStop,
             delay: delayText,
             carrier: attributes.operator || 'Neznámý dopravce',
-            isNAD: false, // Tvůj požadavek (ignorujeme výluky)
+            isNAD: false, 
             isOdklon: false,
-            // Uložíme si kompletní stažená data, ať se nemusíme ptát znovu při kreslení křivky a JŘ
             _cachedFullData: fullData 
         };
     }
