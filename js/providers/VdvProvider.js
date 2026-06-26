@@ -131,9 +131,34 @@ export default class VdvProvider extends BaseProvider {
         };
     }
 
-    async getRouteInfo(globalId, attributes) {
-        // Tuto funkci jsme zatím deaktivovali, vyřešíme později na míru
-        return null;
+    async getRouteInfo(id, attributes) {
+        try {
+            // Ujistíme se, že máme k dispozici 6místnou linku i číslo spoje
+            if (!attributes || !attributes.text || !attributes.runNumber) {
+                return null;
+            }
+
+            // Sestavíme klíč přesně tak, jak jsi ho vygeneroval v Pythonu (např. "841129_25")
+            const cisjrId = `${attributes.text}_${attributes.runNumber}`;
+
+            // Zavoláme tvůj nový Můstek (uprav si případně doménu/port podle tvého nastavení)
+            // Používám relativní cestu, pokud běží backend i frontend na stejné doméně
+            const response = await fetch(`/vdv/route?id=${cisjrId}`);
+            
+            if (!response.ok) return null;
+            
+            const data = await response.json();
+            
+            // Backend vrací { shape: [[lon, lat], [lon, lat], ...] }
+            if (data && data.shape && data.shape.length > 0) {
+                return data.shape;
+            }
+            
+            return null;
+        } catch (error) {
+            console.error("Chyba při stahování VDV trasy z Můstku:", error);
+            return null;
+        }
     }
 
     async getTimetable(globalId, attributes) {
