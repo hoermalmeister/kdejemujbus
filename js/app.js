@@ -2,6 +2,7 @@ import Deduplicator from './Deduplicator.js';
 import GrappProvider from './providers/GrappProvider.js';
 import PidProvider from './providers/PidProvider.js';
 import IdsJmkProvider from './providers/IdsJmkProvider.js';
+import IredoProvider from './providers/IredoProvider.js';
 import VdvProvider from './providers/VdvProvider.js';
 
 const deduplicator = new Deduplicator();
@@ -9,6 +10,7 @@ const providers = [
     new GrappProvider(),
     new PidProvider(),
     new IdsJmkProvider(),
+    new IredoProvider(),
     new VdvProvider()
 ];
 
@@ -34,6 +36,7 @@ function getProviderColor(provider) {
     if (provider === 'GRAPP') return '#800000';
     if (provider === 'PID') return '#d40000';
     if (provider === 'IDS JMK') return '#4ab95d';
+    if (provider === 'IREDO') return '#ee7e1e';
     if (provider === 'VDV') return '#0000ff';
     return '#ff8080'; 
 }
@@ -530,17 +533,45 @@ async function updateData() {
         let allVehicles = [];
         results.forEach((result) => { if (result.status === 'fulfilled') allVehicles = allVehicles.concat(result.value); });
 
+        // --- 1. SBĚR DAT PRO KŘÍŽOVÉ FILTRY ---
         const pidFullLines = new Set();
+        const pidFullConnections = new Set(); // Pro mazání konkrétních spojů z IREDO
+        const iredoFullLines = new Set();
+
         allVehicles.forEach(v => {
+            // Extrakce PID
             if (v.provider === 'PID' && v.attributes && v.attributes.cisjrLine) {
                 pidFullLines.add(v.attributes.cisjrLine);
+                // Vytvoříme klíč "linka_spoj" (např. "642305_19") pro přesnou shodu s IREDO
+                if (v.attributes.cisjrRun) {
+                    pidFullConnections.add(`${v.attributes.cisjrLine}_${v.attributes.cisjrRun}`);
+                }
+            }
+            // Extrakce IREDO
+            if (v.provider === 'IREDO' && v.attributes && v.attributes.cisjrLine) {
+                iredoFullLines.add(v.attributes.cisjrLine);
             }
         });
         
+        // --- 2. APLIKACE FILTRŮ (Vymazání slabších zdrojů) ---
         allVehicles = allVehicles.filter(v => {
             if (v.provider === 'VDV') {
-                if (v.attributes && v.attributes.text && pidFullLines.has(v.attributes.text)) return false; 
+                // VDV linka existuje v PIDu NEBO v IREDO -> Zničit VDV
+                if (v.attributes && v.attributes.text) {
+                    if (pidFullLines.has(v.attributes.text) || iredoFullLines.has(v.attributes.text)) {
+                        return false; 
+                    }
+                }
             }
+            
+            if (v.provider === 'IREDO') {
+                // IREDO spoj (linka_spoj) existuje v PIDu -> Zničit IREDO
+                const matchId = `${v.attributes.cisjrLine}_${v.attributes.cisjrRun}`;
+                if (pidFullConnections.has(matchId)) {
+                    return false;
+                }
+            }
+            
             return true;
         });
         
@@ -554,7 +585,13 @@ async function updateData() {
                 const iconId = getOrCreateIcon(map, v.provider, v.route, v.heading);
 
                 // --- MATEMATIKA PRO DOKONALÉ PŘEKRÝVÁNÍ (Z-INDEX) ---
-                const zIndexBase = { 'GRAPP': 400000, 'IDS JMK': 300000, 'PID': 200000, 'VDV': 100000 }[v.provider] || 0;
+                const zIndexBase = { 
+                    'GRAPP': 900000, 
+                    'IDS JMK': 800000, 
+                    'PID': 700000, 
+                    'IREDO': 30000,
+                    'VDV': 100000 
+                }[v.provider] || 0;
                 const sortKey = zIndexBase + Math.round((52 - v.lat) * 10000);
 
                 const safeProps = { 
