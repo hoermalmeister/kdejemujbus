@@ -241,6 +241,7 @@ export default class DukProvider extends BaseProvider {
         return stops;
     }
 
+    // --- KŘIVKA TRASY ---
     async getRouteInfo(globalId, attributes, details) {
         if (!attributes || !attributes.ID) return null;
         
@@ -250,9 +251,11 @@ export default class DukProvider extends BaseProvider {
             
             const data = await response.json();
             
-            // Pokud máme body, vytáhneme jen souřadnice a seřadíme jako [lon, lat]
             if (data && data.ItemL && data.ItemL.length > 0) {
-                return data.ItemL.map(point => [point.Lng, point.Lat]);
+                const sortedPoints = data.ItemL.sort((a, b) => a.ID - b.ID);
+                
+                // Nyní už do mapy posíláme krásně navazující "spojovačku" [lon, lat]
+                return sortedPoints.map(point => [point.Lng, point.Lat]);
             }
             
             return null;
