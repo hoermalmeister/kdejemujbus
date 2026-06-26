@@ -251,11 +251,9 @@ export default class DukProvider extends BaseProvider {
             
             const data = await response.json();
             
-            if (data && data.ItemL && data.ItemL.length > 0) {
-                const sortedPoints = data.ItemL.sort((a, b) => a.ID - b.ID);
-                
-                // Nyní už do mapy posíláme krásně navazující "spojovačku" [lon, lat]
-                return sortedPoints.map(point => [point.Lng, point.Lat]);
+            // Backend nám už vrací rovnou krásně seřazené pole [lon, lat]
+            if (Array.isArray(data) && data.length > 0) {
+                return data;
             }
             
             return null;
