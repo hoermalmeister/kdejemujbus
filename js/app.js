@@ -360,10 +360,14 @@ function renderDetailView() {
     let delayColor = '#58d68d'; 
     let delayText = 'Bez zpoždění';
 
-    if (d.delay === 'V cíli') {
+    if (d.delay === 'V cíli' || d.delay === 'Neznámé') {
         delayColor = '#7f8c8d'; 
-        delayText = 'V cíli';
-        if (activeTrainData.props) activeTrainData.props.heading = null;
+        delayText = d.delay;
+        
+        // Z mapy odmažeme šipku (směr) POUZE pokud je už v cíli (Neznámé na trase šipku potřebují)
+        if (activeTrainData.props && d.delay === 'V cíli') {
+            activeTrainData.props.heading = null;
+        }
         if (typeof updateData === "function") updateData(); 
     } else if (d.delay.startsWith('-')) {
         delayColor = '#bada55'; 
@@ -419,13 +423,16 @@ async function switchToTimetable() {
     let delayColor = '#58d68d'; 
     let delayText = '0 min';
 
-    if (d.delay.startsWith('-')) {
+    if (d.delay === 'V cíli' || d.delay === 'Neznámé') {
+        delayColor = '#7f8c8d'; 
+        delayText = d.delay;
+    } else if (d.delay.startsWith('-')) {
         delayColor = '#bada55'; delayText = d.delay;
     } else if (d.delay !== '0 min') {
         let minVal = parseInt(d.delay);
         if (minVal > 15) delayColor = '#e74c3c';
         else if (minVal > 5) delayColor = '#f39c12';
-        delayText = '+' + d.delay;
+        delayText = d.delay;
     }
 
     let htmlContent = `
