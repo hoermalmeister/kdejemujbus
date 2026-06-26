@@ -131,25 +131,26 @@ export default class VdvProvider extends BaseProvider {
         };
     }
 
-    async getRouteInfo(id, attributes) {
+    async getRouteInfo(id, attributes, details) {
         try {
-            // Ujistíme se, že máme k dispozici 6místnou linku i číslo spoje
-            if (!attributes || !attributes.text || !attributes.runNumber) {
-                return null;
-            }
+            // Pokud chybí detaily, nemáme z čeho linkospoj vyčíst
+            if (!details) return null;
 
-            // Sestavíme klíč přesně tak, jak jsi ho vygeneroval v Pythonu (např. "841129_25")
-            const cisjrId = `${attributes.text}_${attributes.runNumber}`;
+            // Můstek vrací formát "841129/25" buď v timetableRoute nebo v route
+            const linkospoj = details.timetableRoute || details.route;
+            if (!linkospoj) return null;
 
-            // Zavoláme tvůj nový Můstek (uprav si případně doménu/port podle tvého nastavení)
-            // Používám relativní cestu, pokud běží backend i frontend na stejné doméně
-            const response = await fetch(`/vdv/route?id=${cisjrId}`);
+            // Převedeme lomítko na podtržítko, aby to sedělo s klíči z tvého Python skriptu ("841129_25")
+            const cisjrId = linkospoj.replace('/', '_').replace(/\s/g, '');
+
+            // Nyní konečně voláme Můstek
+            const response = await fetch(`https://grapp-bridge.onrender.com/vdv/route?id=${cisjrId}`);
             
             if (!response.ok) return null;
             
             const data = await response.json();
             
-            // Backend vrací { shape: [[lon, lat], [lon, lat], ...] }
+            // Vrátíme body křivky k vykreslení
             if (data && data.shape && data.shape.length > 0) {
                 return data.shape;
             }
