@@ -559,81 +559,89 @@ async function updateData() {
         let allVehicles = [];
         results.forEach((result) => { if (result.status === 'fulfilled') allVehicles = allVehicles.concat(result.value); });
 
-        // --- 1. SBĚR DAT PRO KŘÍŽOVÉ FILTRY ---
+        // --- 1. SBĚR DAT PRO KŘÍŽOVÉ FILTRY (PID a IREDO) ---
         const pidFullLines = new Set();
         const pidFullConnections = new Set();
         const iredoFullLines = new Set();
-        const jmkVehiclesMap = new Map();
-        const idsokMatchKeys = new Set();
-        jmkTwinsCache.clear();
 
         allVehicles.forEach(v => {
-            // Extrakce PID
             if (v.provider === 'PID' && v.attributes && v.attributes.cisjrLine) {
                 pidFullLines.add(v.attributes.cisjrLine);
-                // Vytvoříme klíč "linka_spoj" (např. "642305_19") pro přesnou shodu s IREDO
                 if (v.attributes.cisjrRun) {
                     pidFullConnections.add(`${v.attributes.cisjrLine}_${v.attributes.cisjrRun}`);
                 }
             }
-            
-            // Extrakce IREDO
             if (v.provider === 'IREDO' && v.attributes && v.attributes.cisjrLine) {
                 iredoFullLines.add(v.attributes.cisjrLine);
             }
+        });
+
+        // --- 2. CHYTRÉ PÁROVÁNÍ IDSOK A IDS JMK (Fuzzy Match) ---
+        jmkTwinsCache.clear();
+        
+        const jmkVehicles = allVehicles.filter(v => v.provider === 'IDS JMK');
+        const idsokVehicles = allVehicles.filter(v => v.provider === 'IDSOK');
+
+        idsokVehicles.forEach(idsokV => {
+            // Z IDSOK získáme "961", "780961" a čisté číslo spoje "30"
+            const idsokRouteShort = String(idsokV.route).replace(/\D/g, ''); 
+            const idsokRouteFull = String(idsokV.attributes?.cisjrLine || "").replace(/\D/g, ''); 
+            const idsokRun = parseInt(String(idsokV.attributes?.cisjrRun).replace(/\D/g, ''), 10).toString(); 
             
-            // Extrakce IDS JMK pro párování s IDSOK
-            if (v.provider === 'IDS JMK' && v.route) {
-                // Různé formáty jakými IDS JMK může předávat číslo spoje
-                const runNum = v.attributes?.runNumber || v.attributes?.spoj || v.attributes?.kmenovySpoj || "";
-                if (runNum) {
-                    jmkVehiclesMap.set(`${v.route}_${runNum}`, v);
-                }
-            }
-            
-            // Extrakce IDSOK pro křížové mazání
-            if (v.provider === 'IDSOK' && v.route && v.attributes?.cisjrRun) {
-                idsokMatchKeys.add(`${v.route}_${v.attributes.cisjrRun}`);
+            // Hledáme dvojče v IDS JMK
+            const twin = jmkVehicles.find(jmkV => {
+                // Odřežeme z linky písmena a mezery
+                const jmkRoute = String(jmkV.route).replace(/\D/g, '');
+                
+                // Může to být krátké i dlouhé číslo linky
+                const routeMatch = (jmkRoute === idsokRouteShort || jmkRoute === idsokRouteFull);
+                if (!routeMatch) return false;
+
+                // Kde všude se v JMK může skrývat číslo spoje?
+                const possibleStrings = [
+                    String(jmkV.attributes?.runNumber || ""),
+                    String(jmkV.attributes?.spoj || ""),
+                    String(jmkV.attributes?.RouteID || ""),
+                    String(jmkV.id || "")
+                ];
+                
+                // Geniální trik: vytáhne z libovolného textu (např. "12345/30") čistě to poslední číslo
+                const extractEndNumber = (str) => {
+                    const match = str.match(/(\d+)$/);
+                    return match ? parseInt(match[1], 10).toString() : null;
+                };
+
+                const possibleRuns = possibleStrings.map(extractEndNumber);
+                // Pokud alespoň jeden z možných spojů v JMK odpovídá IDSOK spoji (např. "30")
+                return possibleRuns.includes(idsokRun);
+            });
+
+            if (twin) {
+                // Uložíme si původní JMK objekt do skryté Cache pod ID toho IDSOK vozidla
+                jmkTwinsCache.set(idsokV.id, twin);
+                // A rovnou si JMK vozidlo interně označíme, že ho má mapa skrýt
+                twin._isJmkTwin = true; 
             }
         });
-        
-        // --- 2. APLIKACE FILTRŮ (Vymazání slabších zdrojů) ---
+
+        // --- 3. APLIKACE FILTRŮ (Vymazání slabších zdrojů) ---
         allVehicles = allVehicles.filter(v => {
+            // TÍMTO zmizí překrývající se IDS JMK spoje (vyhrává IDSOK)
+            if (v._isJmkTwin) return false; 
+
             if (v.provider === 'VDV') {
-                // VDV linka existuje v PIDu NEBO v IREDO -> Zničit VDV
                 if (v.attributes && v.attributes.text) {
                     if (pidFullLines.has(v.attributes.text) || iredoFullLines.has(v.attributes.text)) {
                         return false; 
                     }
                 }
             }
-            
             if (v.provider === 'IREDO') {
-                // IREDO spoj (linka_spoj) existuje v PIDu -> Zničit IREDO
                 const matchId = `${v.attributes.cisjrLine}_${v.attributes.cisjrRun}`;
                 if (pidFullConnections.has(matchId)) {
                     return false;
                 }
             }
-
-            // --- PÁROVÁNÍ IDSOK A IDS JMK ---
-            if (v.provider === 'IDSOK') {
-                const matchKey = `${v.route}_${v.attributes.cisjrRun}`;
-                if (jmkVehiclesMap.has(matchKey)) {
-                    // IDSOK má IDS JMK dvojče! Uložíme si původní JMK objekt do skryté Cache
-                    jmkTwinsCache.set(v.id, jmkVehiclesMap.get(matchKey));
-                }
-            }
-            
-            if (v.provider === 'IDS JMK' && v.route) {
-                const runNum = v.attributes?.runNumber || v.attributes?.spoj || v.attributes?.kmenovySpoj || "";
-                const matchKey = `${v.route}_${runNum}`;
-                if (idsokMatchKeys.has(matchKey)) {
-                    // Zničit IDS JMK vozidlo - pozici a detaily na mapě už přebírá IDSOK
-                    return false;
-                }
-            }
-            
             return true;
         });
         
