@@ -3,6 +3,7 @@ import GrappProvider from './providers/GrappProvider.js';
 import PidProvider from './providers/PidProvider.js';
 import IdsJmkProvider from './providers/IdsJmkProvider.js';
 import IredoProvider from './providers/IredoProvider.js';
+import IdsokProvider from './providers/IdsokProvider.js';
 import VdvProvider from './providers/VdvProvider.js';
 
 const deduplicator = new Deduplicator();
@@ -11,6 +12,7 @@ const providers = [
     new PidProvider(),
     new IdsJmkProvider(),
     new IredoProvider(),
+    new IdsokProvider(),
     new VdvProvider()
 ];
 
@@ -37,6 +39,7 @@ function getProviderColor(provider) {
     if (provider === 'PID') return '#d40000';
     if (provider === 'IDS JMK') return '#4ab95d';
     if (provider === 'IREDO') return '#ee7e1e';
+    if (provider === 'IDSOK') return '#009e9e';
     if (provider === 'VDV') return '#0000ff';
     return '#ff8080'; 
 }
@@ -586,11 +589,12 @@ async function updateData() {
 
                 // --- MATEMATIKA PRO DOKONALÉ PŘEKRÝVÁNÍ (Z-INDEX) ---
                 const zIndexBase = { 
-                    'GRAPP': 900000, 
-                    'IDS JMK': 800000, 
-                    'PID': 700000, 
-                    'IREDO': 30000,
-                    'VDV': 100000 
+                    'GRAPP': 9000, 
+                    'IDS JMK': 8000, 
+                    'PID': 7000, 
+                    'IREDO': 3000,
+                    'IREDO': 2900,
+                    'VDV': 1000 
                 }[v.provider] || 0;
                 const sortKey = zIndexBase + Math.round((52 - v.lat) * 10000);
 
