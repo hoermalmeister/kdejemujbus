@@ -4,37 +4,21 @@ export default class IredoProvider extends BaseProvider {
     constructor() {
         super();
         this.providerName = 'IREDO';
-        this.apiUrl = 'https://iredo.online/map/mapData';
+        // ZMĚNA: Ptáme se vlastního Můstku (pokud používáš Render, uprav doménu)
+        this.apiUrl = 'https://grapp-bridge.onrender.com/iredo'; 
     }
 
     async fetchData() {
         try {
-            const response = await fetch(this.apiUrl, {
-                method: 'POST',
-                headers: {
-                    'accept': 'application/json, text/plain, */*',
-                    'cache-control': 'no-cache',
-                    'content-type': 'application/json',
-                    'pragma': 'no-cache',
-                },
-                // Zvětšený Bounding Box, aby pokryl celý východ ČR
-                body: JSON.stringify({
-                    "w": 14.0,
-                    "s": 49.0,
-                    "e": 17.0,
-                    "n": 51.5,
-                    "zoom": 10
-                })
-            });
+            // ZMĚNA: Čistý, jednoduchý GET bez řešení CORS
+            const response = await fetch(this.apiUrl);
 
-            if (!response.ok) throw new Error(`IREDO API chyba: ${response.status}`);
+            if (!response.ok) throw new Error(`IREDO Proxy chyba: ${response.status}`);
             
             const data = await response.json();
             return this.normalize(data.connections || []);
         } catch (error) {
             console.error("Chyba IREDO:", error.message);
-            // Poznámka: Pokud by prohlížeč blokoval CORS, bude nutné tento endpoint 
-            // přesunout do tvého grapp-bridge na backendu.
             return [];
         }
     }
