@@ -38,7 +38,7 @@ export default class DukProvider extends BaseProvider {
             let delay = trip.DelaySign ? trip.DelaySign : 'Neznámé';
 
             vehicles.push({
-                id: `duk_${trip.ID}`, // Ponecháme si čisté ID pro stahování detailu
+                id: `duk_${trip.ID}`, 
                 provider: this.providerName,
                 lat: trip.Lat,
                 lon: trip.Lng, 
@@ -49,6 +49,7 @@ export default class DukProvider extends BaseProvider {
                 delay: delay,
                 attributes: {
                     ...trip,
+                    ID: trip.ID, // Ponecháme si čisté ID pro detail
                     cisjrLine: lineText,
                     cisjrRun: routeId
                 }
@@ -57,32 +58,27 @@ export default class DukProvider extends BaseProvider {
         return vehicles;
     }
 
-    // --- STAŽENÍ A PARSOVÁNÍ HTML DETAILU ---
-    async fetchFullDetails(id) {
+    // --- STAŽENÍ HTML TEXTU Z ENDPOINTU ---
+    async fetchFullDetailsHTML(id) {
         try {
-            // ZMĚNA: Používáme čistý GET, id předáváme do URL
+            // Voláme náš GET přes Můstek
             const response = await fetch(`${this.detailUrl}?id=${id}`);
-            
             if (!response.ok) return null;
-            
-            const htmlString = await response.text();
-            if (!htmlString) return null;
-
-            // Převedeme HTML string na skutečný DOM dokument pro snadné hledání
-            const parser = new DOMParser();
-            return parser.parseFromString(htmlString, 'text/html');
+            return await response.text(); // Vracíme čistý text (HTML), nikoliv JSON
         } catch (error) {
             console.error("Chyba při stahování DÚK detailu:", error.message);
             return null;
         }
     }
 
+    // --- PARSOVÁNÍ DETAILU VOZIDLA ---
     async getDetails(globalId, attributes) {
         if (!attributes) return null;
 
-        const doc = await this.fetchFullDetails(attributes.ID);
-        if (!doc) {
-            // Nouzový fallback, pokud selže API
+        // Stáhneme HTML strukturu a schováme si ji i pro JŘ
+        const htmlString = await this.fetchFullDetailsHTML(attributes.ID);
+        
+        if (!htmlString) {
             return {
                 route: `${attributes.cisjrLine}/${attributes.cisjrRun}`, 
                 timetableRoute: `${attributes.cisjrLine}/${attributes.cisjrRun}`,
@@ -92,14 +88,16 @@ export default class DukProvider extends BaseProvider {
                 carrier: 'DÚK', 
                 isNAD: false, 
                 isOdklon: false,
-                _cachedDoc: null
+                _cachedHtml: null
             };
         }
 
-        // 1. Zda vozidlo komunikuje
+        // Převedeme HTML string na virtuální DOM
+        const parser = new DOMParser();
+        const doc = parser.parseFromString(htmlString, 'text/html');
+
         const isOffline = doc.body.textContent.includes("Spoj nedodává data online");
 
-        // 2. Extraktivní hledání podle nadpisů (itemDetailsHeadLineKey)
         let linkoSpoj = `${attributes.cisjrLine}/${attributes.cisjrRun}`;
         let destination = "Neznámý cíl";
         
@@ -111,7 +109,6 @@ export default class DukProvider extends BaseProvider {
             if (keyText === "Cíl:" && valEl) destination = valEl.textContent.trim();
         });
 
-        // 3. Extraktivní hledání v minor detailech
         let currentStop = 'Na trase...';
         let delayText = isOffline ? 'Neznámé' : '0 min';
         let carrier = 'DÚK';
@@ -126,15 +123,13 @@ export default class DukProvider extends BaseProvider {
             
             if (keyText === "Odchylka:" && valEl && !isOffline) {
                 const odchylka = valEl.textContent.trim();
-                // Ošetříme text "+2", "-1", atd.
                 if (odchylka !== "není k dispozici" && odchylka !== "") {
-                    // Odřízneme plusko, abychom z toho dostali čisté číslo pro aplikaci
+                    // Očištění textu např. z "+2" na pouhé "2"
                     delayText = `${parseInt(odchylka.replace('+', ''), 10)} min`;
                 }
             }
         });
 
-        // Aktualizujeme si hlavičkovou destinaci i ve vozidle (aby se mohla případně objevit i na mapě)
         attributes.headsign = destination;
 
         return {
@@ -146,88 +141,95 @@ export default class DukProvider extends BaseProvider {
             carrier: carrier, 
             isNAD: false, 
             isOdklon: false,
-            _cachedDoc: doc // Předáme si rozparsované HTML do další funkce
+            // HTML si předáme v textové podobě do funkce getTimetable, ať ho nestahujeme 2x
+            _cachedHtml: htmlString 
         };
     }
 
+    // --- PARSOVÁNÍ JÍZDNÍHO ŘÁDU ---
     async getTimetable(id, attributes, details) {
-        const doc = details ? details._cachedDoc : null;
-        if (!doc) return [];
+        let htmlString = details ? details._cachedHtml : null;
+        
+        // Bezpečnostní pojistka: pokud HTML chybí, stáhneme ho
+        if (!htmlString) {
+            htmlString = await this.fetchFullDetailsHTML(attributes.ID);
+        }
+        if (!htmlString) return [];
+
+        const parser = new DOMParser();
+        const doc = parser.parseFromString(htmlString, 'text/html');
 
         const isOffline = doc.body.textContent.includes("Spoj nedodává data online");
         
-        // Zpoždění pro celý jízdní řád
         let delayMins = 0;
         let isUnknown = isOffline;
 
-        if (!isUnknown && details.delay && details.delay !== 'Neznámé') {
+        if (!isUnknown && details && details.delay && details.delay !== 'Neznámé') {
             delayMins = parseInt(details.delay) || 0;
         }
 
-        let color = '#58d68d'; // Zelená (na čas)
-        if (isUnknown) color = '#7f8c8d'; // Šedá (offline)
-        else if (delayMins > 15) color = '#e74c3c';
-        else if (delayMins > 5) color = '#f39c12';
-        else if (delayMins < 0) color = '#bada55';
+        // Paleta barev pro zpoždění
+        let activeColor = '#58d68d'; 
+        if (isUnknown) activeColor = '#7f8c8d'; 
+        else if (delayMins > 15) activeColor = '#e74c3c';
+        else if (delayMins > 5) activeColor = '#f39c12';
+        else if (delayMins < 0) activeColor = '#bada55';
 
         const stops = [];
-        
-        // Hledání všech řádků v jízdním řádu (mají společnou třídu itemDetailsVehicleTOStopDepartureTime)
-        // DÚK generuje řádky uvnitř <div class="itemDetailsVehicleTOStop"> -> <div class="d-flex flex-row">
         const stopRows = doc.querySelectorAll('.itemDetailsVehicleTOStop .d-flex.flex-row');
+
+        let pastCurrentStop = false;
+
+        const addDelay = (timeStr, delayMin) => {
+            if (!timeStr) return null;
+            let [h, m] = timeStr.split(':').map(Number);
+            m += delayMin;
+            if (m >= 60) { h += Math.floor(m / 60); m %= 60; }
+            else if (m < 0) { h -= Math.ceil(Math.abs(m) / 60); m = 60 - (Math.abs(m) % 60); }
+            if (h >= 24) h %= 24;
+            if (h < 0) h = (h % 24) + 24;
+            return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
+        };
 
         stopRows.forEach(row => {
             const timeDivs = row.querySelectorAll('.itemDetailsVehicleTOStopDepartureTime');
-            // Poslední flex-fill div je jméno stanice
             const nameDiv = row.querySelector('.flex-fill'); 
 
             if (timeDivs.length >= 2 && nameDiv) {
-                // DÚK odděluje příjezd a odjezd. Někde je prázdno nebo znak "|".
                 let arrTime = timeDivs[0].textContent.trim();
                 let depTime = timeDivs[1].textContent.trim();
                 
+                // DÚK odděluje čas příjezdu a odjezdu svítítkem "|"
                 if (arrTime === '|' || !arrTime) arrTime = depTime;
                 if (depTime === '|' || !depTime) depTime = arrTime;
-                
-                // Pokud nemáme ani jeden čas, přeskočíme to
                 if (!arrTime && !depTime) return;
 
-                // Určení, zda už stanice byla (světle modré pozadí značí, že je to aktuální, co je nad tím, už bylo)
-                // U DÚKu si s tím poradíme tak, že pokud má řádek transparentní pozadí a nemá font-weight-bold
-                // (a ještě nebyla modrá stanice nalezená), považujeme ji za minulou. 
-                // Nicméně mnohem spolehlivější je opětovné porovnání "color".
-                
-                // Zda je zastávka už projeta (Zelená = prošlo, aktuální podle zpoždění = budoucí)
-                // U DÚK svítí modré pozadí aktuální / budoucí zastávky. Všechny již projeté jsou transparentní s klasickým textem.
-                // Pro zjednodušení si označíme "isPast" podle toho, zda je to první stanice, aktuální apod. (uděláme odhad)
-                
-                // Očistíme název zastávky od zóny, např "Most,nádraží (2)" -> "Most,nádraží"
+                // Odříznutí čísla stanoviště, např. "Most,nádraží (2)" -> "Most,nádraží"
                 let stopName = nameDiv.textContent.trim().replace(/\s*\(\d+\)$/, '');
 
-                // Pomocná metoda pro výpočet času se zpožděním
-                const addDelay = (timeStr, delayMin) => {
-                    if (!timeStr) return null;
-                    let [h, m] = timeStr.split(':').map(Number);
-                    m += delayMin;
-                    if (m >= 60) { h += Math.floor(m / 60); m %= 60; }
-                    else if (m < 0) { h -= Math.ceil(Math.abs(m) / 60); m = 60 - (Math.abs(m) % 60); }
-                    if (h >= 24) h %= 24;
-                    if (h < 0) h = (h % 24) + 24;
-                    return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
-                };
+                // DETEKCE AKTUÁLNÍ ZASTÁVKY DÍKY SVĚTLE MODRÉMU POZADÍ Z DÚKu (#ADD8E6)
+                const style = row.getAttribute('style') || '';
+                const isCurrentStop = style.toUpperCase().includes('#ADD8E6');
+                
+                if (isCurrentStop) {
+                    pastCurrentStop = true; // Od této chvíle počítáme časy jako budoucí
+                }
+
+                // Pokud je zastávka projeta (není modrá a je před ní), dáme jí tvrdou zelenou
+                let rowColor = (!pastCurrentStop && !isCurrentStop) ? '#58d68d' : activeColor;
 
                 stops.push({
                     station: stopName,
                     arr: {
                         planned: arrTime,
-                        actual: addDelay(arrTime, delayMins),
-                        // Protože DÚK jednoznačně neurčuje past stanice, nastavíme barvu podle aktuálního stavu zpoždění
-                        color: color 
+                        // Na projeté stanice už zpoždění neaplikujeme (mají skutečný čas příjezdu fixní)
+                        actual: (!pastCurrentStop && !isCurrentStop) ? arrTime : addDelay(arrTime, delayMins),
+                        color: rowColor 
                     },
                     dep: {
                         planned: depTime,
-                        actual: addDelay(depTime, delayMins),
-                        color: color
+                        actual: (!pastCurrentStop && !isCurrentStop) ? depTime : addDelay(depTime, delayMins),
+                        color: rowColor
                     },
                     isPassing: false,
                     isNAD: false 
@@ -235,33 +237,10 @@ export default class DukProvider extends BaseProvider {
             }
         });
 
-        // Vyladění barev projetých stanic: Projdeme JŘ od začátku a vše až k "aktuální zastávce" obarvíme zeleně
-        if (details.stop && details.stop !== 'Na trase...') {
-            let foundCurrent = false;
-            for (let s of stops) {
-                // Normalizujeme jména pro snazší porovnání
-                const sName = s.station.replace(/\s/g, '').toLowerCase();
-                const curName = details.stop.replace(/\s/g, '').replace(/\s*\(\d+\)$/, '').toLowerCase();
-                
-                if (sName.includes(curName) || curName.includes(sName)) {
-                    foundCurrent = true;
-                    // Aktuální zastávka svítí stále aktuálním zpožděním (oranžová/červená)
-                }
-                
-                if (!foundCurrent) {
-                    s.arr.color = '#58d68d'; // Zelená - už projel
-                    s.dep.color = '#58d68d';
-                    // Reálný čas u projetých necháme stejný jako plánovaný, protože DÚK nevrací historická data
-                    s.arr.actual = s.arr.planned; 
-                    s.dep.actual = s.dep.planned;
-                }
-            }
-        }
-
         return stops;
     }
 
     async getRouteInfo() {
-        return null; // DÚK API křivku trasy nevrací
+        return null; // Trasy budeme brát odjinud, endpoint je neposkytuje
     }
 }
