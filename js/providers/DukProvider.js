@@ -141,7 +141,7 @@ export default class DukProvider extends BaseProvider {
             carrier: carrier, 
             isNAD: false, 
             isOdklon: false,
-            // HTML si předáme v textové podobě do funkce getTimetable, ať ho nestahujeme 2x
+            isOffline: isOffline,
             _cachedHtml: htmlString 
         };
     }
