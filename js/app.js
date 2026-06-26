@@ -33,6 +33,7 @@ let initialClickDone = false;
 let isTimetableOpen = false;
 
 let activeTrainData = { props: null, details: null, timetable: null };
+let jmkTwinsCache = new Map();
 
 function getProviderColor(provider) {
     if (provider === 'GRAPP') return '#800000';
@@ -213,11 +214,33 @@ async function openVehicleDetail(props) {
     const providerObj = providers.find(p => p.providerName === props.provider);
     if (providerObj) {
         
-        // 1. NEJPRVE stáhneme detaily (zde Můstek zjistí přesný linkospoj)
+        // 1. NEJPRVE stáhneme detaily (Tyto přijdou čistě z IDSOK)
         const details = providerObj.getDetails ? await providerObj.getDetails(props.id, parsedAttributes) : null;
         
-        // 2. AŽ POTOM stáhneme trasu a předáme jí rovnou i ty zjištěné detaily
-        const routeCoordinates = providerObj.getRouteInfo ? await providerObj.getRouteInfo(props.id, parsedAttributes, details) : null;
+        // 2. POTOM stáhneme trasu s možností podvrhnutí z IDS JMK
+        let routeCoordinates = null;
+        
+        // Zkusíme se podívat do naší tajné paměti, jestli IDSOK nemá IDS JMK dvojče
+        const twinJmkVehicle = jmkTwinsCache.get(props.id);
+        
+        if (twinJmkVehicle) {
+            const jmkProviderObj = providers.find(p => p.providerName === 'IDS JMK');
+            if (jmkProviderObj && jmkProviderObj.getRouteInfo) {
+                try {
+                    // Podvrhneme stahování trasy! Posíláme ID a atributy toho smazaného JMK vozidla.
+                    // Null předáváme pro details, protože JMK provider si je pro trasu umí případně stáhnout sám (nebo je nepotřebuje).
+                    routeCoordinates = await jmkProviderObj.getRouteInfo(twinJmkVehicle.id, twinJmkVehicle.attributes, null);
+                } catch (e) {
+                    console.warn("Nepodařilo se stáhnout IDS JMK trasu pro sdílené IDSOK vozidlo.", e);
+                }
+            }
+        }
+        
+        // 3. FALLBACK NA IDSOK TRASU
+        // Pokud dvojče neexistuje, nebo IDS JMK selhalo či vrátilo prázdnou/nullovou trasu:
+        if (!routeCoordinates || routeCoordinates.length === 0) {
+            routeCoordinates = providerObj.getRouteInfo ? await providerObj.getRouteInfo(props.id, parsedAttributes, details) : null;
+        }
         
         if (routeCoordinates && routeCoordinates.length > 0) {
             map.getSource('selected-route').setData({ type: 'Feature', geometry: { type: 'LineString', coordinates: routeCoordinates } });
@@ -538,8 +561,11 @@ async function updateData() {
 
         // --- 1. SBĚR DAT PRO KŘÍŽOVÉ FILTRY ---
         const pidFullLines = new Set();
-        const pidFullConnections = new Set(); // Pro mazání konkrétních spojů z IREDO
+        const pidFullConnections = new Set();
         const iredoFullLines = new Set();
+        const jmkVehiclesMap = new Map();
+        const idsokMatchKeys = new Set();
+        jmkTwinsCache.clear();
 
         allVehicles.forEach(v => {
             // Extrakce PID
@@ -550,9 +576,24 @@ async function updateData() {
                     pidFullConnections.add(`${v.attributes.cisjrLine}_${v.attributes.cisjrRun}`);
                 }
             }
+            
             // Extrakce IREDO
             if (v.provider === 'IREDO' && v.attributes && v.attributes.cisjrLine) {
                 iredoFullLines.add(v.attributes.cisjrLine);
+            }
+            
+            // Extrakce IDS JMK pro párování s IDSOK
+            if (v.provider === 'IDS JMK' && v.route) {
+                // Různé formáty jakými IDS JMK může předávat číslo spoje
+                const runNum = v.attributes?.runNumber || v.attributes?.spoj || v.attributes?.kmenovySpoj || "";
+                if (runNum) {
+                    jmkVehiclesMap.set(`${v.route}_${runNum}`, v);
+                }
+            }
+            
+            // Extrakce IDSOK pro křížové mazání
+            if (v.provider === 'IDSOK' && v.route && v.attributes?.cisjrRun) {
+                idsokMatchKeys.add(`${v.route}_${v.attributes.cisjrRun}`);
             }
         });
         
@@ -571,6 +612,24 @@ async function updateData() {
                 // IREDO spoj (linka_spoj) existuje v PIDu -> Zničit IREDO
                 const matchId = `${v.attributes.cisjrLine}_${v.attributes.cisjrRun}`;
                 if (pidFullConnections.has(matchId)) {
+                    return false;
+                }
+            }
+
+            // --- PÁROVÁNÍ IDSOK A IDS JMK ---
+            if (v.provider === 'IDSOK') {
+                const matchKey = `${v.route}_${v.attributes.cisjrRun}`;
+                if (jmkVehiclesMap.has(matchKey)) {
+                    // IDSOK má IDS JMK dvojče! Uložíme si původní JMK objekt do skryté Cache
+                    jmkTwinsCache.set(v.id, jmkVehiclesMap.get(matchKey));
+                }
+            }
+            
+            if (v.provider === 'IDS JMK' && v.route) {
+                const runNum = v.attributes?.runNumber || v.attributes?.spoj || v.attributes?.kmenovySpoj || "";
+                const matchKey = `${v.route}_${runNum}`;
+                if (idsokMatchKeys.has(matchKey)) {
+                    // Zničit IDS JMK vozidlo - pozici a detaily na mapě už přebírá IDSOK
                     return false;
                 }
             }
