@@ -6,6 +6,7 @@ export default class DukProvider extends BaseProvider {
         this.providerName = 'DÚK';
         this.apiUrl = 'https://grapp-bridge.onrender.com/duk'; 
         this.detailUrl = 'https://grapp-bridge.onrender.com/duk/detail'; 
+        this.routeUrl = 'https://grapp-bridge.onrender.com/duk/route';
     }
 
     async fetchData() {
@@ -240,7 +241,24 @@ export default class DukProvider extends BaseProvider {
         return stops;
     }
 
-    async getRouteInfo() {
-        return null; // Trasy budeme brát odjinud, endpoint je neposkytuje
+    async getRouteInfo(globalId, attributes, details) {
+        if (!attributes || !attributes.ID) return null;
+        
+        try {
+            const response = await fetch(`${this.routeUrl}?id=${attributes.ID}`);
+            if (!response.ok) return null;
+            
+            const data = await response.json();
+            
+            // Pokud máme body, vytáhneme jen souřadnice a seřadíme jako [lon, lat]
+            if (data && data.ItemL && data.ItemL.length > 0) {
+                return data.ItemL.map(point => [point.Lng, point.Lat]);
+            }
+            
+            return null;
+        } catch (error) {
+            console.error("Chyba při stahování trasy DÚK:", error);
+            return null;
+        }
     }
 }
