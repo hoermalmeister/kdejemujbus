@@ -206,10 +206,12 @@ async function openVehicleDetail(props) {
 
     const providerObj = providers.find(p => p.providerName === props.provider);
     if (providerObj) {
-        const [details, routeCoordinates] = await Promise.all([
-            providerObj.getDetails ? providerObj.getDetails(props.id, parsedAttributes) : null,
-            providerObj.getRouteInfo ? providerObj.getRouteInfo(props.id, parsedAttributes) : null
-        ]);
+        
+        // 1. NEJPRVE stáhneme detaily (zde Můstek zjistí přesný linkospoj)
+        const details = providerObj.getDetails ? await providerObj.getDetails(props.id, parsedAttributes) : null;
+        
+        // 2. AŽ POTOM stáhneme trasu a předáme jí rovnou i ty zjištěné detaily
+        const routeCoordinates = providerObj.getRouteInfo ? await providerObj.getRouteInfo(props.id, parsedAttributes, details) : null;
         
         if (routeCoordinates && routeCoordinates.length > 0) {
             map.getSource('selected-route').setData({ type: 'Feature', geometry: { type: 'LineString', coordinates: routeCoordinates } });
