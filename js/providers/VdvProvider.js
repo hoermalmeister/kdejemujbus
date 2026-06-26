@@ -34,14 +34,15 @@ export default class VdvProvider extends BaseProvider {
 
         let stop = 'Na trase...';
         
-        let delayNum = attributes.delay;
+        let delayVal = attributes.delay;
         let delayText = '0 min';
+        let delayNum = 0;
         
-        if (delayNum === -2147483648) {
+        if (delayVal === 'Neznámé' || delayVal === -2147483648) {
             delayText = 'Neznámé';
-            delayNum = 0;
-        } else if (delayNum !== 0) {
-            // Zrušeno generování +, app.js si ho přidá samo (prevence ++5 min)
+            delayNum = 'Neznámé';
+        } else if (delayVal !== 0) {
+            delayNum = parseInt(delayVal) || 0;
             delayText = `${delayNum} min`;
         }
 
@@ -97,7 +98,7 @@ export default class VdvProvider extends BaseProvider {
         // ====================================================================
 
         // 1. ZÁPORNÉ ZPOŽDĚNÍ NA VÝCHOZÍ STANICI (Automatické načtení JŘ)
-        if (delayNum < 0) {
+        if (typeof delayNum === 'number' && delayNum < 0) {
             const tt = await this.getTimetable(globalId, attributes);
             if (tt && tt.length > 0) {
                 const firstStation = tt[0].station;
@@ -175,11 +176,13 @@ export default class VdvProvider extends BaseProvider {
             if (!rows || rows.length === 0) return null;
 
             const stops = [];
-            // Delay už může být opraveno (na 0) v getDetails
-            let delayMins = (attributes.delay !== undefined && attributes.delay !== -2147483648) ? attributes.delay : 0;
+            
+            let isUnknown = (attributes.delay === 'Neznámé' || attributes.delay === -2147483648);
+            let delayMins = isUnknown ? 0 : (parseInt(attributes.delay) || 0);
 
             let color = '#58d68d';
-            if (delayMins > 15) color = '#e74c3c';
+            if (isUnknown) color = '#7f8c8d'; // Šedá barva pro neznámé
+            else if (delayMins > 15) color = '#e74c3c';
             else if (delayMins > 5) color = '#f39c12';
             else if (delayMins < 0) color = '#bada55';
 
@@ -237,7 +240,7 @@ export default class VdvProvider extends BaseProvider {
             if (trip.text === '795832' || trip.text === '795815') continue;
 
             let delay = trip.delay;
-            if (delay === -2147483648) delay = 0;
+            if (delay === -2147483648) delay = 'Neznámé';
 
             let headsign = trip.finalStopName || 'Neznámý cíl';
             if (headsign.includes('N/a')) headsign = 'Neznámý cíl';
