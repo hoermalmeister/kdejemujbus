@@ -4,6 +4,7 @@ import PidProvider from './providers/PidProvider.js';
 import IdsJmkProvider from './providers/IdsJmkProvider.js';
 import IredoProvider from './providers/IredoProvider.js';
 import IdsokProvider from './providers/IdsokProvider.js';
+import DukProvider from './providers/DukProvider.js';
 import VdvProvider from './providers/VdvProvider.js';
 
 const deduplicator = new Deduplicator();
@@ -13,6 +14,7 @@ const providers = [
     new IdsJmkProvider(),
     new IredoProvider(),
     new IdsokProvider(),
+    new DukProvider(),
     new VdvProvider()
 ];
 
@@ -41,6 +43,7 @@ function getProviderColor(provider) {
     if (provider === 'IDS JMK') return '#4ab95d';
     if (provider === 'IREDO') return '#ee7e1e';
     if (provider === 'IDSOK') return '#009e9e';
+    if (provider === 'DÚK') return '#a05a2c';
     if (provider === 'VDV') return '#0000ff';
     return '#ff8080'; 
 }
@@ -660,7 +663,8 @@ async function updateData() {
                     'IDS JMK': 8000, 
                     'PID': 7000, 
                     'IREDO': 3000,
-                    'IREDO': 2900,
+                    'IDSOK': 2900,
+                    'DÚK': 2800,
                     'VDV': 1000 
                 }[v.provider] || 0;
                 const sortKey = zIndexBase + Math.round((52 - v.lat) * 10000);
