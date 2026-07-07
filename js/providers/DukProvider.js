@@ -92,21 +92,24 @@ export default class DukProvider extends BaseProvider {
     // --- PARSOVÁNÍ DETAILU VOZIDLA ---
     async getDetails(globalId, attributes) {
         if (!attributes) return null;
-
+        let headerRoute = `${attributes.cisjrLine}/${attributes.cisjrRun}`;
+        let timetableRoute = attributes.cisjrFullLine ? `${attributes.cisjrFullLine}/${attributes.cisjrRun}` : headerRoute;
+        attributes.headsign = destination;
         // Stáhneme HTML strukturu a schováme si ji i pro JŘ
         const htmlString = await this.fetchFullDetailsHTML(attributes.ID);
         
         if (!htmlString) {
             return {
-                route: `${attributes.cisjrLine}/${attributes.cisjrRun}`, 
-                timetableRoute: `${attributes.cisjrLine}/${attributes.cisjrRun}`,
-                destination: 'Neznámý cíl', 
-                stop: 'Na trase...',
-                delay: 'Neznámé', 
-                carrier: 'DÚK', 
+                route: headerRoute,
+                timetableRoute: timetableRoute, 
+                destination: destination, 
+                stop: currentStop,
+                delay: delayText, 
+                carrier: carrier, 
                 isNAD: false, 
                 isOdklon: false,
-                _cachedHtml: null
+                isOffline: isOffline,
+                _cachedHtml: htmlString 
             };
         }
 
@@ -116,7 +119,6 @@ export default class DukProvider extends BaseProvider {
 
         const isOffline = doc.body.textContent.includes("Spoj nedodává data online");
 
-        let linkoSpoj = `${attributes.cisjrLine}/${attributes.cisjrRun}`;
         let destination = "Neznámý cíl";
         
         const headKeys = doc.querySelectorAll('.itemDetailsHeadLineKey');
@@ -126,7 +128,7 @@ export default class DukProvider extends BaseProvider {
             if (keyText === "Cíl:" && valEl) destination = valEl.textContent.trim();
         });
 
-        let currentStop = 'Na trase...';
+        let currentStop = '...';
         let delayText = isOffline ? 'Neznámé' : '0 min';
         let carrier = 'DÚK';
 
@@ -150,8 +152,8 @@ export default class DukProvider extends BaseProvider {
         attributes.headsign = destination;
 
         return {
-            route: linkoSpoj, 
-            timetableRoute: linkoSpoj,
+            route: headerRoute, 
+            timetableRoute: timetableRoute,
             destination: destination, 
             stop: currentStop,
             delay: delayText, 
@@ -264,7 +266,7 @@ export default class DukProvider extends BaseProvider {
         if (!attributes || !attributes.cisjrLine || !attributes.cisjrRun) return null;
 
         // V tuto chvíli (díky app.js) už je cisjrLine šestimístná a přesně odpovídá klíči!
-        const tripKey = `${attributes.cisjrLine}_${attributes.cisjrRun}`;
+        const tripKey = `${attributes.cisjrFullLine}_${attributes.cisjrRun}`;
         const segmentList = this.tripsCache[tripKey];
 
         if (!segmentList) {
