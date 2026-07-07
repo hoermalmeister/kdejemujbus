@@ -589,22 +589,20 @@ async function updateData() {
         allVehicles.forEach(v => {
             // [NOVÉ] PŘEKLAD KRÁTKÉ DÚK LINKY NA 6MÍSTNOU CISJR
             if (v.provider === 'DÚK' && v.attributes && v.attributes.cisjrLine && v.attributes.cisjrRun) {
-                // Bezpečný ořez mezer, které někdy DÚK v datech posílá
                 const cLine = String(v.attributes.cisjrLine).trim();
                 const cRun = String(v.attributes.cisjrRun).trim();
                 
-                // Zkusíme dva formáty: čistý ("492_111") a s doplněním nuly ("090_20")
                 const key1 = `${cLine}_${cRun}`;
                 const key2 = `${cLine.padStart(3, '0')}_${cRun}`;
                 
                 const translation = dukDict[key1] || dukDict[key2];
 
                 if (translation) {
-                    // Rozsekneme "582492_111" z Github slovníku
                     const [fullLine, fullRun] = translation.split('_');
                     
-                    // Propíšeme šestimístné číslo do atributů vozidla!
-                    v.attributes.cisjrLine = fullLine; 
+                    // ZMĚNA: Původní 3místnou linku necháme žít! 
+                    // Přidáme zcela nový atribut cisjrFullLine pro JŘ a deduplikaci.
+                    v.attributes.cisjrFullLine = fullLine; 
                     v.attributes.cisjrRun = fullRun;
                     v.globalMatchId = `duk_${fullLine}_${fullRun}`;
                 }
@@ -612,9 +610,12 @@ async function updateData() {
 
             // Extrakce PID
             if (v.provider === 'PID' && v.attributes && v.attributes.cisjrLine) {
-                pidFullLines.add(v.attributes.cisjrLine);
+                const pLine = String(v.attributes.cisjrLine).trim();
+                pidFullLines.add(pLine);
                 if (v.attributes.cisjrRun) {
-                    pidFullConnections.add(`${v.attributes.cisjrLine}_${v.attributes.cisjrRun}`);
+                    // Odstraníme úvodní nuly (např. '01' -> '1'), protože systémy to občas míchají
+                    const pRun = String(v.attributes.cisjrRun).replace(/^0+/, '').trim() || "0";
+                    pidFullConnections.add(`${pLine}_${pRun}`);
                 }
             }
             
@@ -693,9 +694,15 @@ async function updateData() {
             }
             // [NOVÉ] PID spolehlivě zničí dublující se DÚK spoj
             if (v.provider === 'DÚK') {
-                const matchId = `${v.attributes.cisjrLine}_${v.attributes.cisjrRun}`;
-                if (pidFullConnections.has(matchId)) {
-                    return false;
+                // Kontrolujeme proti té nové šestimístné lince!
+                if (v.attributes.cisjrFullLine) {
+                    const dLine = String(v.attributes.cisjrFullLine).trim();
+                    const dRun = String(v.attributes.cisjrRun).replace(/^0+/, '').trim() || "0";
+                    const matchId = `${dLine}_${dRun}`;
+                    
+                    if (pidFullConnections.has(matchId)) {
+                        return false; // PID nalezl shodu -> DÚK mažeme!
+                    }
                 }
             }
             return true;
