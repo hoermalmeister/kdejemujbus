@@ -619,18 +619,28 @@ async function updateData() {
             }
 
             // Extrakce PID
-            if (v.provider === 'PID' && v.attributes && v.attributes.cisjrLine) {
-                const pLine = String(v.attributes.cisjrLine).trim();
-                
-                // Pojistka: Do mapy duplikátů pouštíme jen dlouhá čísla (CISJR)
-                if (pLine.length >= 5) {
-                    pidFullLines.add(pLine);
-                    
-                    // Zkusíme vytáhnout číslo spoje (Golemia ho může mít pod různými názvy)
-                    const pRunRaw = v.attributes.cisjrRun || v.attributes.runNumber || v.attributes.spoj;
-                    if (pRunRaw) {
-                        const pRun = String(pRunRaw).replace(/^0+/, '').trim() || "0";
-                        pidFullConnections.add(`${pLine}_${pRun}`);
+            if (v.provider === 'PID' && v.attributes) {
+                // Vezmeme to, co nám reálně posílá Golemio API
+                const pLineShort = String(v.route || v.attributes.text || v.attributes.cisjrLine || "").trim();
+                const pRunRaw = v.attributes.cisjrRun || v.attributes.runNumber || v.attributes.spoj;
+                const pRun = String(pRunRaw || "").replace(/^0+/, '').trim() || "0";
+
+                if (pLineShort) pidFullLines.add(pLineShort);
+                if (pLineShort && pRunRaw) pidFullConnections.add(`${pLineShort}_${pRun}`);
+
+                // MAGIE: Zeptáme se DÚK slovníku, jaké je 6místné číslo této PID linky!
+                if (pLineShort && pRunRaw) {
+                    const key1 = `${pLineShort}_${pRunRaw}`; // Klíč pro slovník nesmí mít oříznuté nuly
+                    const key2 = `${pLineShort.padStart(3, '0')}_${pRunRaw}`;
+                    const translation = dukDict[key1] || dukDict[key2];
+
+                    if (translation) {
+                        // Slovník nám vrátil např. "261467_1035"
+                        const [transLine, transRunRaw] = translation.split('_');
+                        const transRun = String(transRunRaw).replace(/^0+/, '').trim() || "0";
+                        
+                        // Přidáme tuto šestimístnou hodnotu PIDu do "pasti" na DÚK spoje!
+                        pidFullConnections.add(`${transLine}_${transRun}`);
                     }
                 }
             }
@@ -714,11 +724,12 @@ async function updateData() {
                     const dLine = String(v.attributes.cisjrFullLine).trim();
                     const dRun = String(v.attributes.cisjrRun || "").replace(/^0+/, '').trim() || "0";
                     
-                    // Sestavíme čistý identifikátor např. "582492_111"
+                    // Sestavíme striktní identifikátor, např. "261467_1035"
                     const matchId = `${dLine}_${dRun}`;
                     
+                    // PID nahoře díky překladu tuto hodnotu konečně má, takže shoda klapne!
                     if (pidFullConnections.has(matchId)) {
-                        return false; // PID má absolutní shodu v 6místném kódu -> DÚK mažeme!
+                        return false; 
                     }
                 }
                 return true;
