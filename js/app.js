@@ -37,6 +37,15 @@ let isTimetableOpen = false;
 let activeTrainData = { props: null, details: null, timetable: null };
 let jmkTwinsCache = new Map();
 
+let dukDict = {};
+fetch('data/duk_linkospoje.json')
+    .then(res => res.json())
+    .then(data => {
+        dukDict = data;
+        console.log(`DÚK slovník úspěšně načten: ${Object.keys(data).length} spojů.`);
+    })
+    .catch(e => console.warn("Slovník DÚK nenalezen.", e));
+
 function getProviderColor(provider) {
     if (provider === 'GRAPP') return '#800000';
     if (provider === 'PID') return '#d40000';
@@ -564,74 +573,94 @@ async function updateData() {
         let allVehicles = [];
         results.forEach((result) => { if (result.status === 'fulfilled') allVehicles = allVehicles.concat(result.value); });
 
-        // --- 1. SBĚR DAT PRO KŘÍŽOVÉ FILTRY (PID a IREDO) ---
+        // --- 1. SBĚR DAT PRO KŘÍŽOVÉ FILTRY ---
         const pidFullLines = new Set();
         const pidFullConnections = new Set();
         const iredoFullLines = new Set();
+        
+        // Mapy pro párování IDSOK a IDS JMK
+        const jmkVehiclesMap = new Map();
+        const idsokMatchKeys = new Set();
+        jmkTwinsCache.clear(); // Vyčistíme paměť před každým updatem
 
         allVehicles.forEach(v => {
+            // [NOVÉ] PŘEKLAD KRÁTKÉ DÚK LINKY NA 6MÍSTNOU CISJR
+            if (v.provider === 'DÚK' && v.attributes && v.attributes.cisjrLine && v.attributes.cisjrRun) {
+                const shortKey = `${v.attributes.cisjrLine}_${v.attributes.cisjrRun}`;
+                if (dukDict[shortKey]) {
+                    // Přepíšeme interní číslo na 6místné (díky tomu se to promítne i do panelu JŘ)
+                    v.attributes.cisjrLine = dukDict[shortKey]; 
+                    // Aktualizujeme i match ID pro případnou budoucí potřebu
+                    v.globalMatchId = `duk_${dukDict[shortKey]}_${v.attributes.cisjrRun}`;
+                }
+            }
+
+            // Extrakce PID
             if (v.provider === 'PID' && v.attributes && v.attributes.cisjrLine) {
                 pidFullLines.add(v.attributes.cisjrLine);
                 if (v.attributes.cisjrRun) {
                     pidFullConnections.add(`${v.attributes.cisjrLine}_${v.attributes.cisjrRun}`);
                 }
             }
+            
+            // Extrakce IREDO
             if (v.provider === 'IREDO' && v.attributes && v.attributes.cisjrLine) {
                 iredoFullLines.add(v.attributes.cisjrLine);
             }
+            
+            // Extrakce IDS JMK pro párování s IDSOK
+            if (v.provider === 'IDS JMK' && v.route) {
+                const runNum = v.attributes?.RouteID || v.attributes?.runNumber || v.attributes?.spoj || v.attributes?.kmenovySpoj || "";
+                if (runNum) {
+                    jmkVehiclesMap.set(`${v.route}_${runNum}`, v);
+                }
+            }
+            
+            // Extrakce IDSOK pro křížové mazání
+            if (v.provider === 'IDSOK' && v.route && v.attributes?.cisjrRun) {
+                idsokMatchKeys.add(`${v.route}_${v.attributes.cisjrRun}`);
+            }
         });
-
-        // --- 2. CHYTRÉ PÁROVÁNÍ IDSOK A IDS JMK (Fuzzy Match) ---
-        jmkTwinsCache.clear();
         
+        // --- 2. CHYTRÉ PÁROVÁNÍ IDSOK A IDS JMK (Fuzzy Match) ---
         const jmkVehicles = allVehicles.filter(v => v.provider === 'IDS JMK');
         const idsokVehicles = allVehicles.filter(v => v.provider === 'IDSOK');
 
         idsokVehicles.forEach(idsokV => {
-            // Z IDSOK získáme "961", "780961" a čisté číslo spoje "30"
             const idsokRouteShort = String(idsokV.route).replace(/\D/g, ''); 
             const idsokRouteFull = String(idsokV.attributes?.cisjrLine || "").replace(/\D/g, ''); 
             const idsokRun = parseInt(String(idsokV.attributes?.cisjrRun).replace(/\D/g, ''), 10).toString(); 
             
-            // Hledáme dvojče v IDS JMK
             const twin = jmkVehicles.find(jmkV => {
-                // Odřežeme z linky písmena a mezery
                 const jmkRoute = String(jmkV.route).replace(/\D/g, '');
-                
-                // Může to být krátké i dlouhé číslo linky
                 const routeMatch = (jmkRoute === idsokRouteShort || jmkRoute === idsokRouteFull);
                 if (!routeMatch) return false;
 
-                // Kde všude se v JMK může skrývat číslo spoje?
                 const possibleStrings = [
+                    String(jmkV.attributes?.RouteID || ""),
                     String(jmkV.attributes?.runNumber || ""),
                     String(jmkV.attributes?.spoj || ""),
-                    String(jmkV.attributes?.RouteID || ""),
+                    String(jmkV.attributes?.kmenovySpoj || ""),
                     String(jmkV.id || "")
                 ];
                 
-                // Geniální trik: vytáhne z libovolného textu (např. "12345/30") čistě to poslední číslo
                 const extractEndNumber = (str) => {
                     const match = str.match(/(\d+)$/);
                     return match ? parseInt(match[1], 10).toString() : null;
                 };
 
                 const possibleRuns = possibleStrings.map(extractEndNumber);
-                // Pokud alespoň jeden z možných spojů v JMK odpovídá IDSOK spoji (např. "30")
                 return possibleRuns.includes(idsokRun);
             });
 
             if (twin) {
-                // Uložíme si původní JMK objekt do skryté Cache pod ID toho IDSOK vozidla
                 jmkTwinsCache.set(idsokV.id, twin);
-                // A rovnou si JMK vozidlo interně označíme, že ho má mapa skrýt
                 twin._isJmkTwin = true; 
             }
         });
 
         // --- 3. APLIKACE FILTRŮ (Vymazání slabších zdrojů) ---
         allVehicles = allVehicles.filter(v => {
-            // TÍMTO zmizí překrývající se IDS JMK spoje (vyhrává IDSOK)
             if (v._isJmkTwin) return false; 
 
             if (v.provider === 'VDV') {
@@ -642,6 +671,13 @@ async function updateData() {
                 }
             }
             if (v.provider === 'IREDO') {
+                const matchId = `${v.attributes.cisjrLine}_${v.attributes.cisjrRun}`;
+                if (pidFullConnections.has(matchId)) {
+                    return false;
+                }
+            }
+            // [NOVÉ] PID spolehlivě zničí dublující se DÚK spoj
+            if (v.provider === 'DÚK') {
                 const matchId = `${v.attributes.cisjrLine}_${v.attributes.cisjrRun}`;
                 if (pidFullConnections.has(matchId)) {
                     return false;
