@@ -5,10 +5,27 @@ export default class DukProvider extends BaseProvider {
         super();
         this.providerName = 'DÚK';
         this.apiUrl = 'https://grapp-bridge.onrender.com/duk'; 
-        this.detailUrl = 'https://grapp-bridge.onrender.com/duk/detail'; 
-        this.routeUrl = 'https://grapp-bridge.onrender.com/duk/route';
+        this.detailUrl = 'https://grapp-bridge.onrender.com/duk/detail';
+
+        this.tripsCache = null;
+        this.segmentsCache = null;
+        this.loadShapes();
     }
 
+    async loadShapes() {
+        try {
+            const [tripsRes, segmentsRes] = await Promise.all([
+                fetch('https://raw.githubusercontent.com/hoermalmeister/grapp-bridge/main/data/duk_trips.json'),
+                fetch('https://raw.githubusercontent.com/hoermalmeister/grapp-bridge/main/data/duk_segments.json')
+            ]);
+            this.tripsCache = await tripsRes.json();
+            this.segmentsCache = await segmentsRes.json();
+            console.log(`DÚK tvary načteny ze statických dat.`);
+        } catch (e) {
+            console.error('Chyba při načítání DÚK tvarů:', e);
+        }
+    }
+    
     async fetchData() {
         try {
             const response = await fetch(this.apiUrl);
@@ -243,23 +260,30 @@ export default class DukProvider extends BaseProvider {
 
     // --- KŘIVKA TRASY ---
     async getRouteInfo(globalId, attributes, details) {
-        if (!attributes || !attributes.ID) return null;
-        
-        try {
-            const response = await fetch(`${this.routeUrl}?id=${attributes.ID}`);
-            if (!response.ok) return null;
-            
-            const data = await response.json();
-            
-            // Backend nám už vrací rovnou krásně seřazené pole [lon, lat]
-            if (Array.isArray(data) && data.length > 0) {
-                return data;
-            }
-            
-            return null;
-        } catch (error) {
-            console.error("Chyba při stahování trasy DÚK:", error);
-            return null;
+        // Pokud data ještě nejsou stažena nebo vůz nemá potřebné ID
+        if (!this.tripsCache || !this.segmentsCache) return null;
+        if (!attributes || !attributes.cisjrLine || !attributes.cisjrRun) return null;
+
+        // V tuto chvíli (díky app.js) už je cisjrLine šestimístná a přesně odpovídá klíči!
+        const tripKey = `${attributes.cisjrLine}_${attributes.cisjrRun}`;
+        const segmentList = this.tripsCache[tripKey];
+
+        if (!segmentList) {
+            // Pokud spoj ve statických datech není, nevykreslíme nic (příp. můžeš vrátit fallback)
+            return null; 
         }
+
+        // Poskládáme trasu přesně ze segmentů, úplně stejně jako VDV
+        const coords = [];
+        for (const segId of segmentList) {
+            const shape = this.segmentsCache[segId];
+            if (shape) {
+                // Přilepíme body segmentu do hlavní trasy
+                coords.push(...shape);
+            }
+        }
+
+        if (coords.length === 0) return null;
+        return coords;
     }
 }
