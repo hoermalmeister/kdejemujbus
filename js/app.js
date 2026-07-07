@@ -49,6 +49,18 @@ fetch('https://raw.githubusercontent.com/hoermalmeister/grapp-bridge/main/data/d
     })
     .catch(e => console.warn("Slovník DÚK z GitHubu se nepodařilo načíst.", e));
 
+let pidDict = {};
+fetch('https://raw.githubusercontent.com/hoermalmeister/grapp-bridge/main/data/pid_cisjr.json')
+    .then(res => {
+        if (!res.ok) throw new Error(`HTTP error! status: ${res.status}`);
+        return res.json();
+    })
+    .then(data => {
+        pidDict = data;
+        console.log(`PID slovník úspěšně načten: ${Object.keys(data).length} tripů.`);
+    })
+    .catch(e => console.warn("Slovník PID se nepodařilo načíst.", e));
+
 function getProviderColor(provider) {
     if (provider === 'GRAPP') return '#800000';
     if (provider === 'PID') return '#d40000';
@@ -619,28 +631,33 @@ async function updateData() {
             }
 
             // Extrakce PID
-            if (v.provider === 'PID' && v.attributes) {
-                // Vezmeme to, co nám reálně posílá Golemio API
-                const pLineShort = String(v.route || v.attributes.text || v.attributes.cisjrLine || "").trim();
-                const pRunRaw = v.attributes.cisjrRun || v.attributes.runNumber || v.attributes.spoj;
-                const pRun = String(pRunRaw || "").replace(/^0+/, '').trim() || "0";
+            if (v.provider === 'PID') {
+                // 1. Uložíme si klasickou krátkou linku pro mazání VDV (aby nepřestalo fungovat)
+                const pLineShort = String(v.route || v.attributes.text || "").trim();
+                if (pLineShort) {
+                    pidFullLines.add(pLineShort);
+                }
 
-                if (pLineShort) pidFullLines.add(pLineShort);
-                if (pLineShort && pRunRaw) pidFullConnections.add(`${pLineShort}_${pRun}`);
+                // 2. MAGIE: Překlad pro DÚK filtr přes pid_cisjr.json pomocí trip_id
+                const tripId = v.attributes.gtfs_trip_id || v.attributes.trip_id || v.attributes.tripId || String(v.id).replace('pid_', '');
+                const cisjrVal = pidDict[tripId];
+                
+                if (cisjrVal) {
+                    let pLine = "";
+                    let pRunRaw = "";
+                    
+                    // Podpora pro string (např. "582492_149") i případný objekt
+                    if (typeof cisjrVal === 'string') {
+                        [pLine, pRunRaw] = cisjrVal.split('_');
+                    } else if (typeof cisjrVal === 'object') {
+                        pLine = cisjrVal.cisjrLine || cisjrVal.line;
+                        pRunRaw = cisjrVal.cisjrRun || cisjrVal.run;
+                    }
 
-                // MAGIE: Zeptáme se DÚK slovníku, jaké je 6místné číslo této PID linky!
-                if (pLineShort && pRunRaw) {
-                    const key1 = `${pLineShort}_${pRunRaw}`; // Klíč pro slovník nesmí mít oříznuté nuly
-                    const key2 = `${pLineShort.padStart(3, '0')}_${pRunRaw}`;
-                    const translation = dukDict[key1] || dukDict[key2];
-
-                    if (translation) {
-                        // Slovník nám vrátil např. "261467_1035"
-                        const [transLine, transRunRaw] = translation.split('_');
-                        const transRun = String(transRunRaw).replace(/^0+/, '').trim() || "0";
-                        
-                        // Přidáme tuto šestimístnou hodnotu PIDu do "pasti" na DÚK spoje!
-                        pidFullConnections.add(`${transLine}_${transRun}`);
+                    if (pLine && pRunRaw) {
+                        const pRun = String(pRunRaw).replace(/^0+/, '').trim() || "0";
+                        // Vkládáme 6místný identifikátor do pasti na DÚK!
+                        pidFullConnections.add(`${String(pLine).trim()}_${pRun}`);
                     }
                 }
             }
@@ -724,10 +741,10 @@ async function updateData() {
                     const dLine = String(v.attributes.cisjrFullLine).trim();
                     const dRun = String(v.attributes.cisjrRun || "").replace(/^0+/, '').trim() || "0";
                     
-                    // Sestavíme striktní identifikátor, např. "261467_1035"
+                    // Sestavíme striktní identifikátor např. "582492_149"
                     const matchId = `${dLine}_${dRun}`;
                     
-                    // PID nahoře díky překladu tuto hodnotu konečně má, takže shoda klapne!
+                    // Jelikož jsme nahoře PID úspěšně přeložili přes trip_id, shoda konečně nastane!
                     if (pidFullConnections.has(matchId)) {
                         return false; 
                     }
