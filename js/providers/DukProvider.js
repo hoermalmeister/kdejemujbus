@@ -43,7 +43,6 @@ export default class DukProvider extends BaseProvider {
         const vehicles = [];
         
         for (const trip of rawData) {
-            // Ignorujeme vlaky a chybnou lokaci
             if (trip.Traction === 5) continue;
             if (trip.Lat === 0 && trip.Lng === 0) continue;
 
@@ -67,7 +66,7 @@ export default class DukProvider extends BaseProvider {
                 delay: delay,
                 attributes: {
                     ...trip,
-                    ID: trip.ID, // Ponecháme si čisté ID pro detail
+                    ID: trip.ID,
                     cisjrLine: lineText,
                     cisjrRun: routeId
                 }
@@ -76,59 +75,54 @@ export default class DukProvider extends BaseProvider {
         return vehicles;
     }
 
-    // --- STAŽENÍ HTML TEXTU Z ENDPOINTU ---
     async fetchFullDetailsHTML(id) {
         try {
-            // Voláme náš GET přes Můstek
             const response = await fetch(`${this.detailUrl}?id=${id}`);
             if (!response.ok) return null;
-            return await response.text(); // Vracíme čistý text (HTML), nikoliv JSON
+            return await response.text();
         } catch (error) {
             console.error("Chyba při stahování DÚK detailu:", error.message);
             return null;
         }
     }
 
-    // --- PARSOVÁNÍ DETAILU VOZIDLA ---
     async getDetails(globalId, attributes) {
         if (!attributes) return null;
-        let headerRoute = `${attributes.cisjrLine}/${attributes.cisjrRun}`;
-        let timetableRoute = attributes.cisjrFullLine ? `${attributes.cisjrFullLine}/${attributes.cisjrRun}` : headerRoute;
-        attributes.headsign = destination;
-        // Stáhneme HTML strukturu a schováme si ji i pro JŘ
+
         const htmlString = await this.fetchFullDetailsHTML(attributes.ID);
         
+        // SPRÁVNÉ NASTAVENÍ NÁZVU (Hlavička 3místná, Timetable 6místná)
+        let headerRoute = `${attributes.cisjrLine}/${attributes.cisjrRun}`;
+        let timetableRoute = attributes.cisjrFullLine ? `${attributes.cisjrFullLine}/${attributes.cisjrRun}` : headerRoute;
+
         if (!htmlString) {
             return {
-                route: headerRoute,
-                timetableRoute: timetableRoute, 
-                destination: destination, 
-                stop: currentStop,
-                delay: delayText, 
-                carrier: carrier, 
+                route: headerRoute, 
+                timetableRoute: timetableRoute,
+                destination: 'Neznámý cíl', 
+                stop: 'Na trase...',
+                delay: 'Neznámé', 
+                carrier: 'DÚK', 
                 isNAD: false, 
                 isOdklon: false,
-                isOffline: isOffline,
-                _cachedHtml: htmlString 
+                _cachedHtml: null
             };
         }
 
-        // Převedeme HTML string na virtuální DOM
         const parser = new DOMParser();
         const doc = parser.parseFromString(htmlString, 'text/html');
-
         const isOffline = doc.body.textContent.includes("Spoj nedodává data online");
-
         let destination = "Neznámý cíl";
         
         const headKeys = doc.querySelectorAll('.itemDetailsHeadLineKey');
         headKeys.forEach(el => {
             const keyText = el.textContent.trim();
             const valEl = el.nextElementSibling;
+            // ÚMYSLNĚ VYMAZÁNO ČTENÍ "LinkoSpoj:", ABY NÁM HTML NEPŘEPSALO NAŠI 6MÍSTNOU LINKU!
             if (keyText === "Cíl:" && valEl) destination = valEl.textContent.trim();
         });
 
-        let currentStop = '...';
+        let currentStop = 'Na trase...';
         let delayText = isOffline ? 'Neznámé' : '0 min';
         let carrier = 'DÚK';
 
@@ -143,7 +137,6 @@ export default class DukProvider extends BaseProvider {
             if (keyText === "Odchylka:" && valEl && !isOffline) {
                 const odchylka = valEl.textContent.trim();
                 if (odchylka !== "není k dispozici" && odchylka !== "") {
-                    // Očištění textu např. z "+2" na pouhé "2"
                     delayText = `${parseInt(odchylka.replace('+', ''), 10)} min`;
                 }
             }
@@ -165,11 +158,9 @@ export default class DukProvider extends BaseProvider {
         };
     }
 
-    // --- PARSOVÁNÍ JÍZDNÍHO ŘÁDU ---
     async getTimetable(id, attributes, details) {
         let htmlString = details ? details._cachedHtml : null;
         
-        // Bezpečnostní pojistka: pokud HTML chybí, stáhneme ho
         if (!htmlString) {
             htmlString = await this.fetchFullDetailsHTML(attributes.ID);
         }
@@ -187,7 +178,6 @@ export default class DukProvider extends BaseProvider {
             delayMins = parseInt(details.delay) || 0;
         }
 
-        // Paleta barev pro zpoždění
         let activeColor = '#58d68d'; 
         if (isUnknown) activeColor = '#7f8c8d'; 
         else if (delayMins > 15) activeColor = '#e74c3c';
@@ -196,7 +186,6 @@ export default class DukProvider extends BaseProvider {
 
         const stops = [];
         const stopRows = doc.querySelectorAll('.itemDetailsVehicleTOStop .d-flex.flex-row');
-
         let pastCurrentStop = false;
 
         const addDelay = (timeStr, delayMin) => {
@@ -218,30 +207,24 @@ export default class DukProvider extends BaseProvider {
                 let arrTime = timeDivs[0].textContent.trim();
                 let depTime = timeDivs[1].textContent.trim();
                 
-                // DÚK odděluje čas příjezdu a odjezdu svítítkem "|"
                 if (arrTime === '|' || !arrTime) arrTime = depTime;
                 if (depTime === '|' || !depTime) depTime = arrTime;
                 if (!arrTime && !depTime) return;
 
-                // Odříznutí čísla stanoviště, např. "Most,nádraží (2)" -> "Most,nádraží"
                 let stopName = nameDiv.textContent.trim().replace(/\s*\(\d+\)$/, '');
-
-                // DETEKCE AKTUÁLNÍ ZASTÁVKY DÍKY SVĚTLE MODRÉMU POZADÍ Z DÚKu (#ADD8E6)
                 const style = row.getAttribute('style') || '';
                 const isCurrentStop = style.toUpperCase().includes('#ADD8E6');
                 
                 if (isCurrentStop) {
-                    pastCurrentStop = true; // Od této chvíle počítáme časy jako budoucí
+                    pastCurrentStop = true; 
                 }
 
-                // Pokud je zastávka projeta (není modrá a je před ní), dáme jí tvrdou zelenou
                 let rowColor = (!pastCurrentStop && !isCurrentStop) ? '#58d68d' : activeColor;
 
                 stops.push({
                     station: stopName,
                     arr: {
                         planned: arrTime,
-                        // Na projeté stanice už zpoždění neaplikujeme (mají skutečný čas příjezdu fixní)
                         actual: (!pastCurrentStop && !isCurrentStop) ? arrTime : addDelay(arrTime, delayMins),
                         color: rowColor 
                     },
@@ -259,27 +242,21 @@ export default class DukProvider extends BaseProvider {
         return stops;
     }
 
-    // --- KŘIVKA TRASY ---
     async getRouteInfo(globalId, attributes, details) {
-        // Pokud data ještě nejsou stažena nebo vůz nemá potřebné ID
         if (!this.tripsCache || !this.segmentsCache) return null;
-        if (!attributes || !attributes.cisjrLine || !attributes.cisjrRun) return null;
+        if (!attributes || !attributes.cisjrFullLine || !attributes.cisjrRun) return null;
 
-        // V tuto chvíli (díky app.js) už je cisjrLine šestimístná a přesně odpovídá klíči!
         const tripKey = `${attributes.cisjrFullLine}_${attributes.cisjrRun}`;
         const segmentList = this.tripsCache[tripKey];
 
         if (!segmentList) {
-            // Pokud spoj ve statických datech není, nevykreslíme nic (příp. můžeš vrátit fallback)
             return null; 
         }
 
-        // Poskládáme trasu přesně ze segmentů, úplně stejně jako VDV
         const coords = [];
         for (const segId of segmentList) {
             const shape = this.segmentsCache[segId];
             if (shape) {
-                // Přilepíme body segmentu do hlavní trasy
                 coords.push(...shape);
             }
         }
