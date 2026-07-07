@@ -589,17 +589,23 @@ async function updateData() {
         allVehicles.forEach(v => {
             // [NOVÉ] PŘEKLAD KRÁTKÉ DÚK LINKY NA 6MÍSTNOU CISJR
             if (v.provider === 'DÚK' && v.attributes && v.attributes.cisjrLine && v.attributes.cisjrRun) {
-                const shortKey = `${v.attributes.cisjrLine}_${v.attributes.cisjrRun}`;
+                // Bezpečný ořez mezer, které někdy DÚK v datech posílá
+                const cLine = String(v.attributes.cisjrLine).trim();
+                const cRun = String(v.attributes.cisjrRun).trim();
                 
-                if (dukDict[shortKey]) {
-                    // dukDict vrací např. "522486_151". Rozsekneme to na linku a spoj!
-                    const [fullLine, fullRun] = dukDict[shortKey].split('_');
+                // Zkusíme dva formáty: čistý ("492_111") a s doplněním nuly ("090_20")
+                const key1 = `${cLine}_${cRun}`;
+                const key2 = `${cLine.padStart(3, '0')}_${cRun}`;
+                
+                const translation = dukDict[key1] || dukDict[key2];
+
+                if (translation) {
+                    // Rozsekneme "582492_111" z Github slovníku
+                    const [fullLine, fullRun] = translation.split('_');
                     
-                    // Přepíšeme interní hodnoty na čisté 6místné číslo a správný spoj
+                    // Propíšeme šestimístné číslo do atributů vozidla!
                     v.attributes.cisjrLine = fullLine; 
                     v.attributes.cisjrRun = fullRun;
-                    
-                    // Aktualizujeme i match ID (pokud ho někde dál používáš)
                     v.globalMatchId = `duk_${fullLine}_${fullRun}`;
                 }
             }
