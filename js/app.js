@@ -581,10 +581,9 @@ async function updateData() {
         const pidFullConnections = new Set();
         const iredoFullLines = new Set();
         
-        // Mapy pro párování IDSOK a IDS JMK
         const jmkVehiclesMap = new Map();
         const idsokMatchKeys = new Set();
-        jmkTwinsCache.clear(); // Vyčistíme paměť před každým updatem
+        jmkTwinsCache.clear();
 
         allVehicles.forEach(v => {
             // [NOVÉ] PŘEKLAD KRÁTKÉ DÚK LINKY NA 6MÍSTNOU CISJR
@@ -600,22 +599,25 @@ async function updateData() {
                 if (translation) {
                     const [fullLine, fullRun] = translation.split('_');
                     
-                    // ZMĚNA: Původní 3místnou linku necháme žít! 
-                    // Přidáme zcela nový atribut cisjrFullLine pro JŘ a deduplikaci.
+                    // Původní 3místná linka žije dál, vytvoříme nový parametr FullLine
                     v.attributes.cisjrFullLine = fullLine; 
                     v.attributes.cisjrRun = fullRun;
                     v.globalMatchId = `duk_${fullLine}_${fullRun}`;
                 }
             }
 
-            // Extrakce PID
-            if (v.provider === 'PID' && v.attributes && v.attributes.cisjrLine) {
-                const pLine = String(v.attributes.cisjrLine).trim();
-                pidFullLines.add(pLine);
-                if (v.attributes.cisjrRun) {
-                    // Odstraníme úvodní nuly (např. '01' -> '1'), protože systémy to občas míchají
-                    const pRun = String(v.attributes.cisjrRun).replace(/^0+/, '').trim() || "0";
-                    pidFullConnections.add(`${pLine}_${pRun}`);
+            // Extrakce PID - Použijeme širší síť atributů!
+            if (v.provider === 'PID' && v.attributes) {
+                const pLine = v.attributes.cisjrLine || v.attributes.text || v.route;
+                const pRun = v.attributes.cisjrRun || v.attributes.runNumber || v.attributes.spoj;
+                
+                if (pLine) {
+                    const cleanPLine = String(pLine).trim();
+                    pidFullLines.add(cleanPLine);
+                    if (pRun) {
+                        const cleanPRun = String(pRun).replace(/^0+/, '').trim() || "0";
+                        pidFullConnections.add(`${cleanPLine}_${cleanPRun}`);
+                    }
                 }
             }
             
@@ -624,7 +626,7 @@ async function updateData() {
                 iredoFullLines.add(v.attributes.cisjrLine);
             }
             
-            // Extrakce IDS JMK pro párování s IDSOK
+            // Extrakce IDS JMK
             if (v.provider === 'IDS JMK' && v.route) {
                 const runNum = v.attributes?.RouteID || v.attributes?.runNumber || v.attributes?.spoj || v.attributes?.kmenovySpoj || "";
                 if (runNum) {
@@ -632,7 +634,7 @@ async function updateData() {
                 }
             }
             
-            // Extrakce IDSOK pro křížové mazání
+            // Extrakce IDSOK
             if (v.provider === 'IDSOK' && v.route && v.attributes?.cisjrRun) {
                 idsokMatchKeys.add(`${v.route}_${v.attributes.cisjrRun}`);
             }
@@ -692,9 +694,9 @@ async function updateData() {
                     return false;
                 }
             }
-            // [NOVÉ] PID spolehlivě zničí dublující se DÚK spoj
+            // [NOVÉ] PID zničí dublující se DÚK spoj
             if (v.provider === 'DÚK') {
-                // Kontrolujeme proti té nové šestimístné lince!
+                // Kontrolujeme proti té nové šestimístné lince
                 if (v.attributes.cisjrFullLine) {
                     const dLine = String(v.attributes.cisjrFullLine).trim();
                     const dRun = String(v.attributes.cisjrRun).replace(/^0+/, '').trim() || "0";
