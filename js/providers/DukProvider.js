@@ -123,7 +123,6 @@ export default class DukProvider extends BaseProvider {
         headKeys.forEach(el => {
             const keyText = el.textContent.trim();
             const valEl = el.nextElementSibling;
-            if (keyText === "LinkoSpoj:" && valEl) linkoSpoj = valEl.textContent.trim();
             if (keyText === "Cíl:" && valEl) destination = valEl.textContent.trim();
         });
 
