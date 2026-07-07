@@ -38,13 +38,16 @@ let activeTrainData = { props: null, details: null, timetable: null };
 let jmkTwinsCache = new Map();
 
 let dukDict = {};
-fetch('data/duk_linkospoje.json')
-    .then(res => res.json())
+fetch('https://raw.githubusercontent.com/hoermalmeister/grapp-bridge/main/data/duk_linkospoje.json')
+    .then(res => {
+        if (!res.ok) throw new Error(`HTTP error! status: ${res.status}`);
+        return res.json();
+    })
     .then(data => {
         dukDict = data;
-        console.log(`DÚK slovník úspěšně načten: ${Object.keys(data).length} spojů.`);
+        console.log(`DÚK slovník úspěšně načten z GitHubu: ${Object.keys(data).length} spojů.`);
     })
-    .catch(e => console.warn("Slovník DÚK nenalezen.", e));
+    .catch(e => console.warn("Slovník DÚK z GitHubu se nepodařilo načíst.", e));
 
 function getProviderColor(provider) {
     if (provider === 'GRAPP') return '#800000';
