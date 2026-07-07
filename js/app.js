@@ -586,6 +586,18 @@ async function updateData() {
         jmkTwinsCache.clear();
 
         allVehicles.forEach(v => {
+            // --- TESTOVACÍ VÝPIS (DEBUG) ---
+            if (v.provider === 'PID' || v.provider === 'DÚK') {
+                if (String(v.route).includes('492') || String(v.route).includes('467') || String(v.route).includes('711')) {
+                    console.log(`[DEBUG ${v.provider}] Linka: ${v.route} | Atributy:`, v.attributes);
+                    
+                    if (v.provider === 'DÚK') {
+                        const dKey = `${String(v.attributes.cisjrLine).trim()}_${String(v.attributes.cisjrRun).trim()}`;
+                        console.log(` -> Hledaný klíč ve slovníku: ${dKey} | Nalezeno:`, dukDict[dKey] || "NENALEZENO");
+                    }
+                }
+            }
+            
             // [NOVÉ] PŘEKLAD KRÁTKÉ DÚK LINKY NA 6MÍSTNOU CISJR
             if (v.provider === 'DÚK' && v.attributes && v.attributes.cisjrLine && v.attributes.cisjrRun) {
                 const cLine = String(v.attributes.cisjrLine).trim();
