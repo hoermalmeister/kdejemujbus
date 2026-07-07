@@ -606,17 +606,19 @@ async function updateData() {
                 }
             }
 
-            // Extrakce PID - Použijeme širší síť atributů!
-            if (v.provider === 'PID' && v.attributes) {
-                const pLine = v.attributes.cisjrLine || v.attributes.text || v.route;
-                const pRun = v.attributes.cisjrRun || v.attributes.runNumber || v.attributes.spoj;
+            // Extrakce PID
+            if (v.provider === 'PID' && v.attributes && v.attributes.cisjrLine) {
+                const pLine = String(v.attributes.cisjrLine).trim();
                 
-                if (pLine) {
-                    const cleanPLine = String(pLine).trim();
-                    pidFullLines.add(cleanPLine);
-                    if (pRun) {
-                        const cleanPRun = String(pRun).replace(/^0+/, '').trim() || "0";
-                        pidFullConnections.add(`${cleanPLine}_${cleanPRun}`);
+                // Pojistka: Do mapy duplikátů pouštíme jen dlouhá čísla (CISJR)
+                if (pLine.length >= 5) {
+                    pidFullLines.add(pLine);
+                    
+                    // Zkusíme vytáhnout číslo spoje (Golemia ho může mít pod různými názvy)
+                    const pRunRaw = v.attributes.cisjrRun || v.attributes.runNumber || v.attributes.spoj;
+                    if (pRunRaw) {
+                        const pRun = String(pRunRaw).replace(/^0+/, '').trim() || "0";
+                        pidFullConnections.add(`${pLine}_${pRun}`);
                     }
                 }
             }
@@ -694,18 +696,20 @@ async function updateData() {
                     return false;
                 }
             }
-            // [NOVÉ] PID zničí dublující se DÚK spoj
+            // PID zničí dublující se DÚK spoj
             if (v.provider === 'DÚK') {
-                // Kontrolujeme proti té nové šestimístné lince
                 if (v.attributes.cisjrFullLine) {
                     const dLine = String(v.attributes.cisjrFullLine).trim();
-                    const dRun = String(v.attributes.cisjrRun).replace(/^0+/, '').trim() || "0";
+                    const dRun = String(v.attributes.cisjrRun || "").replace(/^0+/, '').trim() || "0";
+                    
+                    // Sestavíme čistý identifikátor např. "582492_111"
                     const matchId = `${dLine}_${dRun}`;
                     
                     if (pidFullConnections.has(matchId)) {
-                        return false; // PID nalezl shodu -> DÚK mažeme!
+                        return false; // PID má absolutní shodu v 6místném kódu -> DÚK mažeme!
                     }
                 }
+                return true;
             }
             return true;
         });
