@@ -590,11 +590,17 @@ async function updateData() {
             // [NOVÉ] PŘEKLAD KRÁTKÉ DÚK LINKY NA 6MÍSTNOU CISJR
             if (v.provider === 'DÚK' && v.attributes && v.attributes.cisjrLine && v.attributes.cisjrRun) {
                 const shortKey = `${v.attributes.cisjrLine}_${v.attributes.cisjrRun}`;
+                
                 if (dukDict[shortKey]) {
-                    // Přepíšeme interní číslo na 6místné (díky tomu se to promítne i do panelu JŘ)
-                    v.attributes.cisjrLine = dukDict[shortKey]; 
-                    // Aktualizujeme i match ID pro případnou budoucí potřebu
-                    v.globalMatchId = `duk_${dukDict[shortKey]}_${v.attributes.cisjrRun}`;
+                    // dukDict vrací např. "522486_151". Rozsekneme to na linku a spoj!
+                    const [fullLine, fullRun] = dukDict[shortKey].split('_');
+                    
+                    // Přepíšeme interní hodnoty na čisté 6místné číslo a správný spoj
+                    v.attributes.cisjrLine = fullLine; 
+                    v.attributes.cisjrRun = fullRun;
+                    
+                    // Aktualizujeme i match ID (pokud ho někde dál používáš)
+                    v.globalMatchId = `duk_${fullLine}_${fullRun}`;
                 }
             }
 
