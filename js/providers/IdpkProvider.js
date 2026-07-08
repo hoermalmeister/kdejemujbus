@@ -37,17 +37,15 @@ export default class IdpkProvider extends BaseProvider {
         
         for (const trip of rawData) {
             if (!trip.lat || !trip.lng) continue;
-            if (this.finishedVehicles.has(trip.id)) continue;
-            
-            // Filtr: Nezobrazovat vlaky a chybné entity
+
             if (trip.traction === 'TRAIN') continue;
 
-            const heading = trip.bearing !== undefined ? trip.bearing : null; 
-            
+            let heading = trip.bearing !== undefined ? trip.bearing : null; 
+
             if (this.finishedVehicles.has(trip.id)) {
                 heading = null;
             }
-            
+
             const lineText = trip.text ? trip.text.toString().trim() : "N/A";
             
             // Ořezání linky pro bublinu na mapě (poslední 3 znaky)
@@ -67,7 +65,7 @@ export default class IdpkProvider extends BaseProvider {
                 provider: this.providerName,
                 lat: trip.lat,
                 lon: trip.lng, 
-                heading: heading, // Nyní bude generovat správné šipky ihned po načtení stránky
+                heading: heading,
                 route: shortLine, 
                 headsign: trip.finalStopName || 'Neznámý cíl',
                 delay: delayText,
