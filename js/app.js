@@ -597,6 +597,11 @@ async function updateData() {
         const idsokMatchKeys = new Set();
         jmkTwinsCache.clear();
 
+        // --- START DEBUG PID ---
+        console.log("--- UKÁZKA KLÍČŮ Z PID SLOVNÍKU ---");
+        console.log(Object.keys(pidDict).slice(0, 5));
+        let pidDebugCount = 0;
+
         allVehicles.forEach(v => {
             // --- TESTOVACÍ VÝPIS (DEBUG) ---
             if (v.provider === 'PID' || v.provider === 'DÚK') {
@@ -608,6 +613,13 @@ async function updateData() {
                         console.log(` -> Hledaný klíč ve slovníku: ${dKey} | Nalezeno:`, dukDict[dKey] || "NENALEZENO");
                     }
                 }
+            }
+
+            // --- DEBUG PID VOZIDLA ---
+            if (v.provider === 'PID' && pidDebugCount < 3) {
+                console.log(`\n[DEBUG PID #${pidDebugCount + 1}] ID vozu: ${v.id} | Zobrazená linka (v.route): ${v.route}`);
+                console.log(`[DEBUG PID #${pidDebugCount + 1}] Všechny atributy:`, v.attributes);
+                pidDebugCount++;
             }
             
             // [NOVÉ] PŘEKLAD KRÁTKÉ DÚK LINKY NA 6MÍSTNOU CISJR
