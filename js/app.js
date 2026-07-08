@@ -779,6 +779,18 @@ async function updateData() {
                 }
                 return true;
             }
+
+            // PID zničí dublující se IDPK linky
+            if (v.provider === 'IDPK') {
+                // V.route u IDPK je díky ořezání z minula vždy krátké číslo (např. "467")
+                const shortLine = String(v.route).trim();
+                
+                // Pokud PID vysílá linku stejného jména, IDPK autobus úplně zahodíme
+                if (pidFullLines.has(shortLine)) {
+                    return false;
+                }
+            }
+            
             return true;
         });
 
