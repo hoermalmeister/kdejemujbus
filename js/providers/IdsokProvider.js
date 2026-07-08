@@ -120,10 +120,10 @@ export default class IdsokProvider extends BaseProvider {
                 currentStop = fullData.stations[0].name;
             }
         }
-
+        
         return {
             route: `${attributes.shortRoute}/${attributes.cisjrRun}`, 
-            timetableRoute: `${attributes.shortRoute}/${attributes.cisjrRun}`,
+            timetableRoute: `${attributes.cisjrLine}/${attributes.cisjrRun}`,
             destination: attributes.dest || 'Neznámý cíl',
             stop: currentStop,
             delay: delayText,
