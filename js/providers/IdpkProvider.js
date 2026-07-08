@@ -42,9 +42,12 @@ export default class IdpkProvider extends BaseProvider {
             // Filtr: Nezobrazovat vlaky a chybné entity
             if (trip.traction === 'TRAIN') continue;
 
-            // BACKEND MAGIE: Šáhneme si rovnou pro předpřipravený azimut!
             const heading = trip.bearing !== undefined ? trip.bearing : null; 
-
+            
+            if (this.finishedVehicles.has(trip.id)) {
+                heading = null;
+            }
+            
             const lineText = trip.text ? trip.text.toString().trim() : "N/A";
             
             // Ořezání linky pro bublinu na mapě (poslední 3 znaky)
@@ -93,7 +96,20 @@ export default class IdpkProvider extends BaseProvider {
             let linka = attributes.fullLine || attributes.text;
             let spoj = "";
             let zastavka = "Na trase...";
-            let zpozdeni = attributes.delay < -1000 ? 'Neznámé' : `${attributes.delay} min`;
+            let destination = attributes.finalStopName || "Neznámý cíl";
+
+            // --- ZPOŽDĚNÍ: Přesná struktura jako u VDV ---
+            let delayVal = attributes.delay;
+            let delayText = '0 min';
+            let delayNum = 0;
+
+            if (delayVal < -1000) {
+                delayText = 'Neznámé';
+                delayNum = 'Neznámé';
+            } else if (delayVal !== 0 && delayVal !== undefined && delayVal !== null) {
+                delayNum = parseInt(delayVal) || 0;
+                delayText = `${delayNum} min`;
+            }
 
             const rows = doc.querySelectorAll('table tbody tr');
             rows.forEach(row => {
@@ -106,11 +122,25 @@ export default class IdpkProvider extends BaseProvider {
                     if (key === "Linka") linka = val;
                     if (key === "Spoj") spoj = val;
                     if (key === "Zastávka") zastavka = val;
-                    if (key === "Zpoždění") zpozdeni = val;
+                    if (key === "Zpoždění") {
+                        // Očistíme text od "min." a vytáhneme číslo
+                        let parsed = parseInt(val.replace('min.', '').trim());
+                        if (!isNaN(parsed)) {
+                            delayNum = parsed;
+                            delayText = `${parsed} min`;
+                        }
+                    }
                 }
             });
 
-            zpozdeni = zpozdeni.replace('min.', 'min').trim();
+            let isAtDestination = false;
+            if (zastavka !== 'Na trase...' && destination !== 'Neznámý cíl' && zastavka.toLowerCase() === destination.toLowerCase()) {
+                delayText = 'V cíli';
+                delayNum = 0;
+                attributes.delay = 0; // Jízdní řád se tváří, že zpoždění neexistuje
+                isAtDestination = true;
+                this.finishedVehicles.add(attributes.rawId); // Odstraní šipku z mapy
+            }
             
             let shortLinka = String(linka);
             if (shortLinka.length >= 3) {
@@ -122,13 +152,14 @@ export default class IdpkProvider extends BaseProvider {
             return {
                 route: headerRoute, 
                 timetableRoute: fullRoute, 
-                destination: attributes.finalStopName || "Neznámý cíl", 
+                destination: destination, 
                 stop: zastavka,
-                delay: zpozdeni, 
-                carrier: attributes.traction === 'TRAIN' ? 'ČD/GWTR' : 'IDPK', 
+                delay: delayText, // Nyní poctivě předáváme delayText
+                carrier: 'IDPK', 
                 isNAD: false, 
                 isOdklon: false,
-                isOffline: attributes.delay < -1000,
+                isOffline: delayNum === 'Neznámé',
+                isAtDestination: isAtDestination, 
                 _cachedHtml: htmlString 
             };
         } catch (error) {
