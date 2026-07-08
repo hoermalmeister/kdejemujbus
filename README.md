@@ -64,3 +64,16 @@ Lovosice
 Litoměřice  
 Kadaň  
 Duchcov  
+
+## Notes to myself  
+Filtrování zobrazených regionů  
+Chybná čísla spojů MHD Praha  
+Transfer návaznosti  
+Zastávky s aktuálním zpožděním  
+Výluky a mimořádnosti  
+Vyhledávač spojů a zastávek  
+Vlaky do linek  
+Zastávky na znamení  
+Barva spojů podle zpoždění/typu vozidla  
+Spoje Dukovany  
+
