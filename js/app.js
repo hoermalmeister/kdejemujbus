@@ -668,22 +668,26 @@ async function updateData() {
 
             // Extrakce PID
             if (v.provider === 'PID' && v.attributes) {
-                // 1. Uložíme si klasickou krátkou linku (např. "467") pro fungování ostatních systémů (VDV)
                 const pLineShort = String(v.route || v.attributes.text || "").trim();
                 if (pLineShort) {
                     pidFullLines.add(pLineShort);
                 }
 
-                // 2. MAGIE Z LOGU: Extrakce šestimístné linky a čísla spoje
+                // 2. Extrakce šestimístné linky a čísla spoje
                 const pLineLong = v.attributes.cisjrLine;
                 const pTrip = v.attributes.cisjrTrip;
 
-                if (pLineLong && pTrip) {
+                if (pLineLong) {
                     const cleanLine = String(pLineLong).trim();
-                    const cleanTrip = String(pTrip).replace(/^0+/, '').trim() || "0";
                     
-                    // Zapíšeme do pasti dokonalý identifikátor (např. "270430_1016")
-                    pidFullConnections.add(`${cleanLine}_${cleanTrip}`);
+                    // ZÁCHRANA PRO VDV: Přidáme i šestimístnou linku (např. "261467") do sítě!
+                    pidFullLines.add(cleanLine);
+                    
+                    if (pTrip) {
+                        const cleanTrip = String(pTrip).replace(/^0+/, '').trim() || "0";
+                        // TOTO SLOUŽÍ PRO SMAZÁNÍ DÚK:
+                        pidFullConnections.add(`${cleanLine}_${cleanTrip}`);
+                    }
                 }
             }
             
