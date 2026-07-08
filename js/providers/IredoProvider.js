@@ -147,7 +147,7 @@ export default class IredoProvider extends BaseProvider {
 
         return {
             route: `${shortLine}/${attributes.cisjrRun}`, 
-            timetableRoute: `${shortLine}/${attributes.cisjrRun}`,
+            timetableRoute: `${attributes.cisjrLine}/${attributes.cisjrRun}`,
             destination: attributes.dest || 'Neznámý cíl',
             stop: currentStop,
             delay: delayText,
