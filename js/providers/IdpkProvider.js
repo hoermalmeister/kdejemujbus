@@ -4,11 +4,10 @@ export default class IdpkProvider extends BaseProvider {
     constructor() {
         super();
         this.providerName = 'IDPK';
-        // Směřujeme vše na tvůj bezpečný Můstek na Renderu
         this.apiUrl = 'https://grapp-bridge.onrender.com/idpk';
         this.detailUrl = 'https://grapp-bridge.onrender.com/idpk/detail?id=';
         this.timetableUrl = 'https://grapp-bridge.onrender.com/idpk/timetable?id=';
-        this.finishedVehicles = new Set(); // Můžeme si připravit pro budoucí mazání z mapy
+        this.finishedVehicles = new Set(); 
     }
 
     async fetchData() {
@@ -16,8 +15,22 @@ export default class IdpkProvider extends BaseProvider {
             const response = await fetch(this.apiUrl);
             if (!response.ok) throw new Error(`IDPK Proxy chyba: ${response.status}`);
             
-            const rawData = await response.json();
-            return this.normalize(rawData || []);
+            let rawData = await response.json();
+
+            // POJISTKA 1: Kdyby Můstek poslal data jako čistý String místo JSONu
+            if (typeof rawData === 'string') {
+                rawData = JSON.parse(rawData);
+            }
+
+            // POJISTKA 2: Pokud by byla data skrytá hlouběji v objektu
+            const dataArray = Array.isArray(rawData) ? rawData : (rawData.data || rawData.points || []);
+
+            const vehicles = this.normalize(dataArray);
+            
+            // Log do konzole (F12), ať hned vidíme, jestli se načetla správně!
+            console.log(`[DEBUG IDPK] Získáno a zpracováno vozidel: ${vehicles.length}`);
+            
+            return vehicles;
         } catch (error) {
             console.error("Chyba IDPK:", error.message);
             return [];
@@ -28,32 +41,39 @@ export default class IdpkProvider extends BaseProvider {
         const vehicles = [];
         
         for (const trip of rawData) {
-            // Bez lokace nebo u dokončených spojů nemá smysl vykreslovat
             if (!trip.lat || !trip.lng) continue;
             if (this.finishedVehicles.has(trip.id)) continue;
 
-            const heading = null; // IDPK neposílá azimut, uděláme statický kruh
+            const heading = null; 
             const lineText = trip.text ? trip.text.toString().trim() : "N/A";
+            
+            // Ořezání 6místné linky (440523) na 3místnou (523) pro mapovou bublinu
+            let shortLine = lineText;
+            if (lineText.length === 6) {
+                // Vezme poslední 3 znaky a odstraní případné nuly na začátku
+                shortLine = lineText.slice(3).replace(/^0+/, '') || "0"; 
+            }
             
             let delayText = '0 min';
             if (trip.delay !== undefined && trip.delay !== null) {
-                // IDPK občas hází obří záporná čísla pro spoje offline
                 if (trip.delay < -1000) delayText = 'Neznámé';
                 else delayText = `${trip.delay} min`;
             }
 
             vehicles.push({
-                id: `idpk_${trip.id}`, // Bezpečné globální ID
+                id: `idpk_${trip.id}`, 
                 provider: this.providerName,
                 lat: trip.lat,
                 lon: trip.lng, 
                 heading: heading,
-                route: lineText,
+                route: shortLine, // Krátké číslo na bublinu
                 headsign: trip.finalStopName || 'Neznámý cíl',
                 delay: delayText,
+                globalMatchId: `idpk_${trip.id}`, // <--- TOTO CHYBĚLO! Proto Deduplikátor mazal IDPK.
                 attributes: {
                     ...trip,
-                    rawId: trip.id // Uchováme čisté ID pro JŘ a detail
+                    rawId: trip.id,
+                    fullLine: lineText // Uložíme 6místnou verzi do zálohy
                 }
             });
         }
@@ -64,7 +84,6 @@ export default class IdpkProvider extends BaseProvider {
         if (!attributes) return null;
 
         try {
-            // Voláme tvůj Můstek
             const response = await fetch(`${this.detailUrl}${attributes.rawId}`);
             if (!response.ok) return null;
             const htmlString = await response.text();
@@ -72,12 +91,11 @@ export default class IdpkProvider extends BaseProvider {
             const parser = new DOMParser();
             const doc = parser.parseFromString(htmlString, 'text/html');
 
-            let linka = attributes.text;
+            let linka = attributes.fullLine || attributes.text;
             let spoj = "";
             let zastavka = "Na trase...";
             let zpozdeni = attributes.delay < -1000 ? 'Neznámé' : `${attributes.delay} min`;
 
-            // Vytažení dat z tabulky
             const rows = doc.querySelectorAll('table tbody tr');
             rows.forEach(row => {
                 const th = row.querySelector('th');
@@ -97,8 +115,8 @@ export default class IdpkProvider extends BaseProvider {
             const fullRoute = spoj ? `${linka}/${spoj}` : linka;
 
             return {
-                route: attributes.text, 
-                timetableRoute: fullRoute, // Např. "430933/7"
+                route: attributes.route, // Zůstane krátká pro bublinu/hlavičku detailu
+                timetableRoute: fullRoute, // Propíše se 6místná linka/spoj
                 destination: attributes.finalStopName || "Neznámý cíl", 
                 stop: zastavka,
                 delay: zpozdeni, 
@@ -118,7 +136,6 @@ export default class IdpkProvider extends BaseProvider {
         if (!attributes) return [];
 
         try {
-            // Voláme tvůj Můstek
             const response = await fetch(`${this.timetableUrl}${attributes.rawId}`);
             if (!response.ok) return [];
             const htmlString = await response.text();
@@ -159,7 +176,6 @@ export default class IdpkProvider extends BaseProvider {
                     const arrTime = tds[1].textContent.trim();
                     const depTime = tds[2].textContent.trim();
 
-                    // IDPK má u aktuální zastávky inline CSS barvu #ff112299 (nebo něco v tom smyslu)
                     const style = row.getAttribute('style') || '';
                     const isCurrentStop = style.includes('#ff112299') || style.includes('rgba(255, 17, 34');
 
