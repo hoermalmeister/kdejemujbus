@@ -8,6 +8,9 @@ export default class IdpkProvider extends BaseProvider {
         this.detailUrl = 'https://grapp-bridge.onrender.com/idpk/detail?id=';
         this.timetableUrl = 'https://grapp-bridge.onrender.com/idpk/timetable?id=';
         this.finishedVehicles = new Set(); 
+        
+        // [NOVÉ] Paměť pro minulé polohy vozidel (stejné jako u VDV)
+        this.vehicleHistory = new Map(); 
     }
 
     async fetchData() {
@@ -36,10 +39,12 @@ export default class IdpkProvider extends BaseProvider {
             if (!trip.lat || !trip.lng) continue;
             if (this.finishedVehicles.has(trip.id)) continue;
             
-            // --- FILTR: Nezobrazovat vlaky a chybné "UNKNOWN" entity z dat ---
+            // Filtr: Nezobrazovat vlaky a chybné entity
             if (trip.traction === 'TRAIN' || trip.traction === 'UNKNOWN') continue;
 
-            const heading = null; 
+            // BACKEND MAGIE: Šáhneme si rovnou pro předpřipravený azimut!
+            const heading = trip.bearing !== undefined ? trip.bearing : null; 
+
             const lineText = trip.text ? trip.text.toString().trim() : "N/A";
             
             // Ořezání linky pro bublinu na mapě (poslední 3 znaky)
@@ -59,7 +64,7 @@ export default class IdpkProvider extends BaseProvider {
                 provider: this.providerName,
                 lat: trip.lat,
                 lon: trip.lng, 
-                heading: heading,
+                heading: heading, // Nyní bude generovat správné šipky ihned po načtení stránky
                 route: shortLine, 
                 headsign: trip.finalStopName || 'Neznámý cíl',
                 delay: delayText,
@@ -107,19 +112,16 @@ export default class IdpkProvider extends BaseProvider {
 
             zpozdeni = zpozdeni.replace('min.', 'min').trim();
             
-            // --- HLAVIČKA: Sestavena ze tří posledních číslic linky ---
             let shortLinka = String(linka);
             if (shortLinka.length >= 3) {
                 shortLinka = shortLinka.slice(-3).replace(/^0+/, '') || "0";
             }
             const headerRoute = spoj ? `${shortLinka}/${spoj}` : shortLinka;
-            
-            // Jízdní řád dostane plnou 6místnou
             const fullRoute = spoj ? `${linka}/${spoj}` : linka;
 
             return {
-                route: headerRoute, // Zobrazí se jako "933/7" nahoře v panelu
-                timetableRoute: fullRoute, // Zobrazí se jako "430933/7" v jízdním řádu
+                route: headerRoute, 
+                timetableRoute: fullRoute, 
                 destination: attributes.finalStopName || "Neznámý cíl", 
                 stop: zastavka,
                 delay: zpozdeni, 
