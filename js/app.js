@@ -441,15 +441,22 @@ function renderDetailView() {
 }
 
 async function switchToTimetable() {
+    // Pojistka: Pokud klikneme na tlačítko, prohlížeč předá "Event", to musíme ignorovat
+    if (isSilent instanceof Event) isSilent = false; 
+
     isTimetableOpen = true;
     updateURL();
 
-    panelBody.innerHTML = `<div style="text-align:center; padding:20px; color:#aaa;">Načítám jízdní řád...</div>`;
+    // Pokud to NENÍ tichý update na pozadí, ukážeme načítání
+    if (!isSilent) {
+        panelBody.innerHTML = `<div style="text-align:center; padding:20px; color:#aaa;">Načítám jízdní řád...</div>`;
+    }
     
     const p = activeTrainData.props;
     const d = activeTrainData.details;
     const providerObj = providers.find(prov => prov.providerName === p.provider);
 
+    // Pokud NENÍ JŘ v paměti (nebo to není tichý update, který ho už dodal), tak ho stáhneme
     if (!activeTrainData.timetable && providerObj && providerObj.getTimetable) {
         let parsedAttributes = null;
         if (p.attributes) {
@@ -538,21 +545,64 @@ async function switchToTimetable() {
     panelBody.innerHTML = htmlContent;
     document.getElementById('back-to-details-btn').addEventListener('click', renderDetailView);
 
-    setTimeout(() => {
-        const currentRow = document.getElementById('current-stop-row');
-        const scrollContainer = document.getElementById('tt-scroll-container');
-        
-        if (currentRow && scrollContainer) {
-            const containerRect = scrollContainer.getBoundingClientRect();
-            const rowRect = currentRow.getBoundingClientRect();
-            const offset = (rowRect.top - containerRect.top) - (containerRect.height / 2) + (rowRect.height / 2);
+    if (!isSilent) {
+        setTimeout(() => {
+            const currentRow = document.getElementById('current-stop-row');
+            const scrollContainer = document.getElementById('tt-scroll-container');
             
-            scrollContainer.scrollBy({
-                top: offset,
-                behavior: 'smooth'
-            });
+            if (currentRow && scrollContainer) {
+                const containerRect = scrollContainer.getBoundingClientRect();
+                const rowRect = currentRow.getBoundingClientRect();
+                const offset = (rowRect.top - containerRect.top) - (containerRect.height / 2) + (rowRect.height / 2);
+                
+                scrollContainer.scrollBy({ top: offset, behavior: 'smooth' });
+            }
+        }, 150);
+    }
+}
+
+async function silentUpdateDetail(props) {
+    // Pokud uživatel okno mezitím zavřel, zastavíme to
+    if (!detailPanel.classList.contains('open')) return; 
+
+    const providerObj = providers.find(p => p.providerName === props.provider);
+    if (!providerObj) return;
+
+    let parsedAttributes = null;
+    if (props.attributes) {
+        try { parsedAttributes = typeof props.attributes === 'string' ? JSON.parse(props.attributes) : props.attributes; } 
+        catch (e) { parsedAttributes = props.attributes; }
+    }
+
+    // 1. Tichý zisk nových detailů ze sítě
+    const details = providerObj.getDetails ? await providerObj.getDetails(props.id, parsedAttributes) : null;
+    
+    // Pokud okno stále svítí a data přišla, aplikujeme je
+    if (details && detailPanel.classList.contains('open')) {
+        activeTrainData.props = props;
+        activeTrainData.details = details;
+        
+        if (isTimetableOpen) {
+            // Pokud koukáme na JŘ, musíme ho potichu stáhnout znovu (změna zpoždění na trase)
+            if (providerObj.getTimetable) {
+                activeTrainData.timetable = await providerObj.getTimetable(props.id, parsedAttributes, details);
+                
+                // ULOŽENÍ POSUVNÍKU: Podíváme se, jak nízko máš odscrollováno
+                const scrollContainer = document.getElementById('tt-scroll-container');
+                const currentScroll = scrollContainer ? scrollContainer.scrollTop : 0;
+                
+                // Překreslíme JŘ potichu
+                await switchToTimetable(true); 
+                
+                // OBNOVA POSUVNÍKU: Vrátíme tě přesně tam, kde jsi byl!
+                const newScrollContainer = document.getElementById('tt-scroll-container');
+                if (newScrollContainer) newScrollContainer.scrollTop = currentScroll;
+            }
+        } else {
+            // Hladké překreslení tabulky detailů
+            renderDetailView(); 
         }
-    }, 150);
+    }
 }
 
 function closeDetailPanel() {
