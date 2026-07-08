@@ -17,20 +17,12 @@ export default class IdpkProvider extends BaseProvider {
             
             let rawData = await response.json();
 
-            // POJISTKA 1: Kdyby Můstek poslal data jako čistý String místo JSONu
             if (typeof rawData === 'string') {
                 rawData = JSON.parse(rawData);
             }
 
-            // POJISTKA 2: Pokud by byla data skrytá hlouběji v objektu
             const dataArray = Array.isArray(rawData) ? rawData : (rawData.data || rawData.points || []);
-
-            const vehicles = this.normalize(dataArray);
-            
-            // Log do konzole (F12), ať hned vidíme, jestli se načetla správně!
-            console.log(`[DEBUG IDPK] Získáno a zpracováno vozidel: ${vehicles.length}`);
-            
-            return vehicles;
+            return this.normalize(dataArray);
         } catch (error) {
             console.error("Chyba IDPK:", error.message);
             return [];
@@ -43,15 +35,17 @@ export default class IdpkProvider extends BaseProvider {
         for (const trip of rawData) {
             if (!trip.lat || !trip.lng) continue;
             if (this.finishedVehicles.has(trip.id)) continue;
+            
+            // --- FILTR: Nezobrazovat vlaky a chybné "UNKNOWN" entity z dat ---
+            if (trip.traction === 'TRAIN' || trip.traction === 'UNKNOWN') continue;
 
             const heading = null; 
             const lineText = trip.text ? trip.text.toString().trim() : "N/A";
             
-            // Ořezání 6místné linky (440523) na 3místnou (523) pro mapovou bublinu
+            // Ořezání linky pro bublinu na mapě (poslední 3 znaky)
             let shortLine = lineText;
-            if (lineText.length === 6) {
-                // Vezme poslední 3 znaky a odstraní případné nuly na začátku
-                shortLine = lineText.slice(3).replace(/^0+/, '') || "0"; 
+            if (shortLine.length >= 3) {
+                shortLine = shortLine.slice(-3).replace(/^0+/, '') || "0"; 
             }
             
             let delayText = '0 min';
@@ -66,14 +60,14 @@ export default class IdpkProvider extends BaseProvider {
                 lat: trip.lat,
                 lon: trip.lng, 
                 heading: heading,
-                route: shortLine, // Krátké číslo na bublinu
+                route: shortLine, 
                 headsign: trip.finalStopName || 'Neznámý cíl',
                 delay: delayText,
-                globalMatchId: `idpk_${trip.id}`, // <--- TOTO CHYBĚLO! Proto Deduplikátor mazal IDPK.
+                globalMatchId: `idpk_${trip.id}`,
                 attributes: {
                     ...trip,
                     rawId: trip.id,
-                    fullLine: lineText // Uložíme 6místnou verzi do zálohy
+                    fullLine: lineText 
                 }
             });
         }
@@ -112,11 +106,20 @@ export default class IdpkProvider extends BaseProvider {
             });
 
             zpozdeni = zpozdeni.replace('min.', 'min').trim();
+            
+            // --- HLAVIČKA: Sestavena ze tří posledních číslic linky ---
+            let shortLinka = String(linka);
+            if (shortLinka.length >= 3) {
+                shortLinka = shortLinka.slice(-3).replace(/^0+/, '') || "0";
+            }
+            const headerRoute = spoj ? `${shortLinka}/${spoj}` : shortLinka;
+            
+            // Jízdní řád dostane plnou 6místnou
             const fullRoute = spoj ? `${linka}/${spoj}` : linka;
 
             return {
-                route: attributes.route, // Zůstane krátká pro bublinu/hlavičku detailu
-                timetableRoute: fullRoute, // Propíše se 6místná linka/spoj
+                route: headerRoute, // Zobrazí se jako "933/7" nahoře v panelu
+                timetableRoute: fullRoute, // Zobrazí se jako "430933/7" v jízdním řádu
                 destination: attributes.finalStopName || "Neznámý cíl", 
                 stop: zastavka,
                 delay: zpozdeni, 
