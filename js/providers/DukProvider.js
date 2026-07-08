@@ -42,14 +42,23 @@ export default class DukProvider extends BaseProvider {
     normalize(rawData) {
         const vehicles = [];
         
+        // Seznam linek, které chceme na mapě úplně ignorovat (pro jistotu malými písmeny)
+        const ignoredLines = ['400', '369', 's560'];
+        
         for (const trip of rawData) {
+            // Ignorujeme vlaky a chybnou lokaci
             if (trip.Traction === 5) continue;
             if (trip.Lat === 0 && trip.Lng === 0) continue;
 
-            const lineText = trip.LineText || "";
+            const lineText = trip.LineText ? trip.LineText.toString().trim() : "";
             const routeId = trip.RouteID || ""; 
 
             if (!lineText) continue;
+
+            // Převedeme na malá písmena, aby to spolehlivě zachytilo "S560" i "s560"
+            if (ignoredLines.includes(lineText.toLowerCase())) {
+                continue; // Spoj se úplně přeskočí a do mapy vůbec nedoputuje
+            }
 
             const heading = trip.IsWaiting ? null : trip.Azimut;
             let delay = trip.DelaySign ? trip.DelaySign : 'Neznámé';
@@ -66,7 +75,7 @@ export default class DukProvider extends BaseProvider {
                 delay: delay,
                 attributes: {
                     ...trip,
-                    ID: trip.ID,
+                    ID: trip.ID, 
                     cisjrLine: lineText,
                     cisjrRun: routeId
                 }
