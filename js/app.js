@@ -415,7 +415,7 @@ function renderDetailView() {
             activeTrainData.props.heading = null;
         }
         if (typeof updateData === "function") updateData(); 
-    } else if (d.delay.startsWith('-')) {
+    } else if (String(d.delay).startsWith('-')) {
         delayColor = '#bada55'; 
         delayText = d.delay;    
     } else if (d.delay !== '0 min') {
@@ -437,12 +437,15 @@ function renderDetailView() {
         </button>
     `;
 
-    document.getElementById('show-timetable-btn').addEventListener('click', switchToTimetable);
+    document.getElementById('show-timetable-btn').addEventListener('click', () => switchToTimetable(false));
 }
 
-async function switchToTimetable() {
-    // Pojistka: Pokud klikneme na tlačítko, prohlížeč předá "Event", to musíme ignorovat
-    if (isSilent instanceof Event) isSilent = false; 
+async function switchToTimetable(isSilent = false) {
+    
+    // Pro absolutní jistotu – pokud náhodou isSilent přesto není boolean, uděláme z něj false
+    if (typeof isSilent !== 'boolean') {
+        isSilent = false;
+    }
 
     isTimetableOpen = true;
     updateURL();
@@ -463,7 +466,7 @@ async function switchToTimetable() {
             try { parsedAttributes = typeof p.attributes === 'string' ? JSON.parse(p.attributes) : p.attributes; } 
             catch (e) { parsedAttributes = p.attributes; }
         }
-        activeTrainData.timetable = await providerObj.getTimetable(p.id, parsedAttributes);
+        activeTrainData.timetable = await providerObj.getTimetable(p.id, parsedAttributes, d);
     }
 
     document.querySelector('.panel-header').style.display = 'none';
@@ -479,7 +482,7 @@ async function switchToTimetable() {
     if (d.delay === 'V cíli' || d.delay === 'Neznámé') {
         delayColor = '#7f8c8d'; 
         delayText = d.delay;
-    } else if (d.delay.startsWith('-')) {
+    } else if (String(d.delay).startsWith('-')) {
         delayColor = '#bada55'; delayText = d.delay;
     } else if (d.delay !== '0 min') {
         let minVal = parseInt(d.delay);
