@@ -49,18 +49,6 @@ fetch('https://raw.githubusercontent.com/hoermalmeister/grapp-bridge/main/data/d
     })
     .catch(e => console.warn("Slovník DÚK z GitHubu se nepodařilo načíst.", e));
 
-let pidDict = {};
-fetch('https://raw.githubusercontent.com/hoermalmeister/grapp-bridge/main/data/pid_cisjr.json')
-    .then(res => {
-        if (!res.ok) throw new Error(`HTTP error! status: ${res.status}`);
-        return res.json();
-    })
-    .then(data => {
-        pidDict = data;
-        console.log(`PID slovník úspěšně načten: ${Object.keys(data).length} tripů.`);
-    })
-    .catch(e => console.warn("Slovník PID se nepodařilo načíst.", e));
-
 function getProviderColor(provider) {
     if (provider === 'GRAPP') return '#800000';
     if (provider === 'PID') return '#d40000';
@@ -597,31 +585,9 @@ async function updateData() {
         const idsokMatchKeys = new Set();
         jmkTwinsCache.clear();
 
-        // --- START DEBUG PID ---
-        console.log("--- UKÁZKA KLÍČŮ Z PID SLOVNÍKU ---");
-        console.log(Object.keys(pidDict).slice(0, 5));
-        let pidDebugCount = 0;
+        
 
-        allVehicles.forEach(v => {
-            // --- TESTOVACÍ VÝPIS (DEBUG) ---
-            if (v.provider === 'PID' || v.provider === 'DÚK') {
-                if (String(v.route).includes('492') || String(v.route).includes('467') || String(v.route).includes('711')) {
-                    console.log(`[DEBUG ${v.provider}] Linka: ${v.route} | Atributy:`, v.attributes);
-                    
-                    if (v.provider === 'DÚK') {
-                        const dKey = `${String(v.attributes.cisjrLine).trim()}_${String(v.attributes.cisjrRun).trim()}`;
-                        console.log(` -> Hledaný klíč ve slovníku: ${dKey} | Nalezeno:`, dukDict[dKey] || "NENALEZENO");
-                    }
-                }
-            }
-
-            // --- DEBUG PID VOZIDLA ---
-            if (v.provider === 'PID' && pidDebugCount < 3) {
-                console.log(`\n[DEBUG PID #${pidDebugCount + 1}] ID vozu: ${v.id} | Zobrazená linka (v.route): ${v.route}`);
-                console.log(`[DEBUG PID #${pidDebugCount + 1}] Všechny atributy:`, v.attributes);
-                pidDebugCount++;
-            }
-            
+        allVehicles.forEach(v => {            
             // [NOVÉ] PŘEKLAD KRÁTKÉ DÚK LINKY NA 6MÍSTNOU CISJR
             if (v.provider === 'DÚK' && v.attributes && v.attributes.cisjrLine && v.attributes.cisjrRun) {
                 const cLine = String(v.attributes.cisjrLine).trim();
@@ -643,34 +609,23 @@ async function updateData() {
             }
 
             // Extrakce PID
-            if (v.provider === 'PID') {
-                // 1. Uložíme si klasickou krátkou linku pro mazání VDV (aby nepřestalo fungovat)
+            if (v.provider === 'PID' && v.attributes) {
+                // 1. Uložíme si klasickou krátkou linku (např. "467") pro fungování ostatních systémů (VDV)
                 const pLineShort = String(v.route || v.attributes.text || "").trim();
                 if (pLineShort) {
                     pidFullLines.add(pLineShort);
                 }
 
-                // 2. MAGIE: Překlad pro DÚK filtr přes pid_cisjr.json pomocí trip_id
-                const tripId = v.attributes.gtfs_trip_id || v.attributes.trip_id || v.attributes.tripId || String(v.id).replace('pid_', '');
-                const cisjrVal = pidDict[tripId];
-                
-                if (cisjrVal) {
-                    let pLine = "";
-                    let pRunRaw = "";
-                    
-                    // Podpora pro string (např. "582492_149") i případný objekt
-                    if (typeof cisjrVal === 'string') {
-                        [pLine, pRunRaw] = cisjrVal.split('_');
-                    } else if (typeof cisjrVal === 'object') {
-                        pLine = cisjrVal.cisjrLine || cisjrVal.line;
-                        pRunRaw = cisjrVal.cisjrRun || cisjrVal.run;
-                    }
+                // 2. MAGIE Z LOGU: Extrakce šestimístné linky a čísla spoje
+                const pLineLong = v.attributes.cisjrLine;
+                const pTrip = v.attributes.cisjrTrip;
 
-                    if (pLine && pRunRaw) {
-                        const pRun = String(pRunRaw).replace(/^0+/, '').trim() || "0";
-                        // Vkládáme 6místný identifikátor do pasti na DÚK!
-                        pidFullConnections.add(`${String(pLine).trim()}_${pRun}`);
-                    }
+                if (pLineLong && pTrip) {
+                    const cleanLine = String(pLineLong).trim();
+                    const cleanTrip = String(pTrip).replace(/^0+/, '').trim() || "0";
+                    
+                    // Zapíšeme do pasti dokonalý identifikátor (např. "270430_1016")
+                    pidFullConnections.add(`${cleanLine}_${cleanTrip}`);
                 }
             }
             
@@ -753,10 +708,9 @@ async function updateData() {
                     const dLine = String(v.attributes.cisjrFullLine).trim();
                     const dRun = String(v.attributes.cisjrRun || "").replace(/^0+/, '').trim() || "0";
                     
-                    // Sestavíme striktní identifikátor např. "582492_149"
+                    // Sestaví identifikátor např. "270430_1016"
                     const matchId = `${dLine}_${dRun}`;
                     
-                    // Jelikož jsme nahoře PID úspěšně přeložili přes trip_id, shoda konečně nastane!
                     if (pidFullConnections.has(matchId)) {
                         return false; 
                     }
