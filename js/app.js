@@ -576,6 +576,8 @@ async function updateData() {
         let allVehicles = [];
         results.forEach((result) => { if (result.status === 'fulfilled') allVehicles = allVehicles.concat(result.value); });
 
+        await new Promise(r => setTimeout(r, 15));
+
         // --- 1. SBĚR DAT PRO KŘÍŽOVÉ FILTRY ---
         const pidFullLines = new Set();
         const pidFullConnections = new Set();
@@ -647,6 +649,8 @@ async function updateData() {
                 idsokMatchKeys.add(`${v.route}_${v.attributes.cisjrRun}`);
             }
         });
+
+        await new Promise(r => setTimeout(r, 15));
         
         // --- 2. CHYTRÉ PÁROVÁNÍ IDSOK A IDS JMK (Fuzzy Match) ---
         const jmkVehicles = allVehicles.filter(v => v.provider === 'IDS JMK');
@@ -685,6 +689,8 @@ async function updateData() {
             }
         });
 
+        await new Promise(r => setTimeout(r, 15));
+
         // --- 3. APLIKACE FILTRŮ (Vymazání slabších zdrojů) ---
         allVehicles = allVehicles.filter(v => {
             if (v._isJmkTwin) return false; 
@@ -719,9 +725,13 @@ async function updateData() {
             }
             return true;
         });
+
+        await new Promise(r => setTimeout(r, 15));
         
         deduplicator.processData(allVehicles);
         const cleanData = deduplicator.getCleanData();
+
+        await new Promise(r => setTimeout(r, 15));
 
         const features = cleanData
             .filter(v => v.lat !== undefined && v.lon !== undefined && v.lat !== null && v.lon !== null)
@@ -768,6 +778,17 @@ async function updateData() {
             if (targetFeature) {
                 initialClickDone = true;
                 openVehicleDetail(targetFeature.properties);
+            }
+        }
+
+        if (activeTrainData && activeTrainData.props && detailPanel.classList.contains('open')) {
+            const currentId = activeTrainData.props.id;
+            // Najdeme aktuální čerstvá data právě otevřeného vozidla
+            const updatedFeature = features.find(f => f.properties.id === currentId);
+            
+            if (updatedFeature) {
+                // Zavoláme novou funkci pro tichý update (viz níže)
+                silentUpdateDetail(updatedFeature.properties);
             }
         }
 
