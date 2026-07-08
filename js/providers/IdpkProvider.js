@@ -40,7 +40,7 @@ export default class IdpkProvider extends BaseProvider {
             if (this.finishedVehicles.has(trip.id)) continue;
             
             // Filtr: Nezobrazovat vlaky a chybné entity
-            if (trip.traction === 'TRAIN' || trip.traction === 'UNKNOWN') continue;
+            if (trip.traction === 'TRAIN') continue;
 
             // BACKEND MAGIE: Šáhneme si rovnou pro předpřipravený azimut!
             const heading = trip.bearing !== undefined ? trip.bearing : null; 
