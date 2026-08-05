@@ -135,7 +135,6 @@ export default class IdpkProvider extends BaseProvider {
             if (zastavka !== 'Na trase...' && destination !== 'Neznámý cíl' && zastavka.toLowerCase() === destination.toLowerCase()) {
                 delayText = 'V cíli';
                 delayNum = 0;
-                attributes.delay = 0; // Jízdní řád se tváří, že zpoždění neexistuje
                 isAtDestination = true;
                 this.finishedVehicles.add(attributes.rawId); // Odstraní šipku z mapy
             }
