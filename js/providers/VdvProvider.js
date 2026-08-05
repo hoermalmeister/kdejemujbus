@@ -115,7 +115,6 @@ export default class VdvProvider extends BaseProvider {
         if (stop !== 'Na trase...' && destination !== 'Neznámý cíl' && stop.toLowerCase() === destination.toLowerCase()) {
             delayText = 'V cíli';
             delayNum = 0;
-            attributes.delay = 0; // Jízdní řád se tváří, že zpoždění není
             isAtDestination = true;
             this.finishedVehicles.add(attributes.id);
         }
