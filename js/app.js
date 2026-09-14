@@ -72,7 +72,7 @@ const map = new maplibregl.Map({
         sources: { 
             'carto-dark': { 
                 type: 'raster', 
-                tiles: ['https://a.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}.png'], 
+                tiles: ['https://a.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}.png?key=cb1_3jz6_1_06d33734b1cc4458e25cfa01'], 
                 tileSize: 256 
             } 
         },
