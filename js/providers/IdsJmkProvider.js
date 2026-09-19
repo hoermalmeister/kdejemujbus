@@ -4,9 +4,9 @@ export default class IdsJmkProvider extends BaseProvider {
     constructor() {
         super();
         this.providerName = 'IDS JMK';
-        this.apiUrl = 'https://grapp-bridge.onrender.com/idsjmk';
-        this.routeUrl = 'https://grapp-bridge.onrender.com/idsjmk-route';
-        this.timetableUrl = 'https://grapp-bridge.onrender.com/idsjmk-timetable';
+        this.apiUrl = 'https://grapp-bridge-production.up.railway.app/idsjmk';
+        this.routeUrl = 'https://grapp-bridge-production.up.railway.app/idsjmk-route';
+        this.timetableUrl = 'https://grapp-bridge-production.up.railway.app/idsjmk-timetable';
     }
 
     async fetchData() {
