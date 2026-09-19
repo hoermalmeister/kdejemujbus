@@ -87,7 +87,7 @@ export default class GrappProvider extends BaseProvider {
 
     async getRouteInfo(globalId) {
         const trainId = globalId.replace('grapp_', '');
-        const url = `https://grapp-bridge.onrender.com/grapp/route?id=${trainId}&token=${this.currentToken}&session=${this.currentSession}`;
+        const url = `https://grapp-bridge-production.up.railway.app/grapp/route?id=${trainId}&token=${this.currentToken}&session=${this.currentSession}`;
         try {
             const response = await fetch(url);
             const data = await response.json();
