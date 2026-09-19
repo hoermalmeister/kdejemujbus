@@ -4,9 +4,9 @@ export default class GrappProvider extends BaseProvider {
     constructor() {
         super();
         this.providerName = 'GRAPP';
-        this.apiUrl = 'https://grapp-bridge.onrender.com/grapp'; 
-        this.detailUrl = 'https://grapp-bridge.onrender.com/grapp/detail'; 
-        this.timetableUrl = 'https://grapp-bridge.onrender.com/grapp/timetable';
+        this.apiUrl = 'https://grapp-bridge-production.up.railway.app/grapp'; 
+        this.detailUrl = 'https://grapp-bridge-production.up.railway.app/grapp/detail'; 
+        this.timetableUrl = 'https://grapp-bridge-production.up.railway.app/grapp/timetable';
         this.currentToken = ''; 
         this.currentSession = ''; 
     }
