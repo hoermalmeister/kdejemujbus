@@ -144,7 +144,7 @@ export default class VdvProvider extends BaseProvider {
             const cisjrId = linkospoj.replace('/', '_').replace(/\s/g, '');
 
             // Nyní konečně voláme Můstek
-            const response = await fetch(`https://grapp-bridge.onrender.com/vdv/route?id=${cisjrId}`);
+            const response = await fetch(`https://grapp-bridge-production.up.railway.app/vdv/route?id=${cisjrId}`);
             
             if (!response.ok) return null;
             
