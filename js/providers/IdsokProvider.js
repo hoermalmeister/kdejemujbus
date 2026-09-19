@@ -4,14 +4,14 @@ export default class IdsokProvider extends BaseProvider {
     constructor() {
         super();
         this.providerName = 'IDSOK';
+        // apiUrl a routeUrl už nepotřebujeme, všechno řešíme napřímo!
     }
 
+    // --- 1. STAHOVÁNÍ POZIC VOZIDEL (Přímý přístup) ---
     async fetchData() {
         try {
-            // Zeptáme se napřímo! Žádný Railway, žádný Render.
             const response = await fetch('https://cestujok.cz/idspublicservices/api/service/position', {
                 method: 'GET',
-                // Tyto hlavičky občas pomohou, pokud by prohlížeč reptal na CORS
                 headers: {
                     'Accept': 'application/json'
                 }
@@ -20,8 +20,6 @@ export default class IdsokProvider extends BaseProvider {
             if (!response.ok) throw new Error(`Přímý IDSOK selhal: ${response.status}`);
             
             const rawData = await response.json();
-            
-            // Očekávám, že struktura rawData.data nebo surového pole zůstává
             const dataArray = Array.isArray(rawData) ? rawData : (rawData.data || rawData.points || []);
             return this.normalize(dataArray);
 
@@ -42,7 +40,6 @@ export default class IdsokProvider extends BaseProvider {
 
             if (!cisjrLine) continue;
 
-            // Zkrácení na poslední 3 čísla a automatické umazání nul zleva (např "048" -> "48")
             const shortLineStr = String(cisjrLine).slice(-3);
             const displayRoute = parseInt(shortLineStr, 10).toString();
 
@@ -72,34 +69,11 @@ export default class IdsokProvider extends BaseProvider {
         return vehicles;
     }
 
-    parseWKT(wktString) {
-        if (!wktString || typeof wktString !== 'string') return [];
-        try {
-            const matches = wktString.match(/\(([^()]+)\)/g);
-            if (!matches) return [];
-            
-            const coordinates = [];
-            for (const match of matches) {
-                const cleanMatch = match.replace(/[()]/g, '');
-                const points = cleanMatch.split(',');
-                
-                for (const point of points) {
-                    const coords = point.trim().split(' ');
-                    if (coords.length === 2) {
-                        coordinates.push([parseFloat(coords[0]), parseFloat(coords[1])]);
-                    }
-                }
-            }
-            return coordinates;
-        } catch (e) {
-            return [];
-        }
-    }
-
+    // --- 2. STAHOVÁNÍ DETAILU A TVARU LINKY (Přímý přístup) ---
     async fetchFullDetails(id) {
         try {
-            // Žádný Render, ptáme se napřímo CestujOK!
-            const targetUrl = `https://cestujok.cz/idspublicservices/api/service/${id}`;
+            // Žádný Render! Ptáme se přímo CestujOK
+            const targetUrl = `https://cestujok.cz/idspublicservices/api/servicedetail?id=${id}`;
             
             const response = await fetch(targetUrl, {
                 method: 'GET',
@@ -116,9 +90,11 @@ export default class IdsokProvider extends BaseProvider {
         }
     }
 
+    // --- 3. ZPRACOVÁNÍ DETAILŮ PRO PANEL VOZIDLA ---
     async getDetails(globalId, attributes) {
         if (!attributes) return null;
 
+        // Stažení čerstvých dat (zastávky a trasa)
         const fullData = await this.fetchFullDetails(attributes.id);
 
         let delayVal = attributes.delay;
@@ -148,19 +124,49 @@ export default class IdsokProvider extends BaseProvider {
             delay: delayText,
             carrier: attributes.operator || 'Neznámý dopravce',
             isNAD: false, 
-            isOdklon: false,
-            _cachedFullData: fullData 
+            isOdklon: attributes.isDetour === true, // Převezmeme info o odklonu
+            _cachedFullData: fullData // Uložíme do cache pro mapu a jízdní řád!
         };
+    }
+
+    // --- 4. ZPRACOVÁNÍ TVARU LINKY (WKT) ---
+    parseWKT(wktString) {
+        if (!wktString || typeof wktString !== 'string') return [];
+        try {
+            const matches = wktString.match(/\(([^()]+)\)/g);
+            if (!matches) return [];
+            
+            const coordinates = [];
+            for (const match of matches) {
+                const cleanMatch = match.replace(/[()]/g, '');
+                const points = cleanMatch.split(',');
+                
+                for (const point of points) {
+                    const coords = point.trim().split(' ');
+                    if (coords.length >= 2) {
+                        // Většina map očekává [lat, lon], takže to otočíme (WKT dává většinou lon lat)
+                        coordinates.push([parseFloat(coords[1]), parseFloat(coords[0])]);
+                    }
+                }
+            }
+            return coordinates;
+        } catch (e) {
+            return [];
+        }
     }
 
     async getRouteInfo(id, attributes, details) {
         if (!details || !details._cachedFullData) return null;
+        
+        // Z API nám chodí položka 'geometry' jako dlouhý WKT string (MULTILINESTRING)
         const geometryStr = details._cachedFullData.geometry;
         const coords = this.parseWKT(geometryStr);
+        
         if (coords.length > 0) return coords;
         return null;
     }
 
+    // --- 5. ZPRACOVÁNÍ JÍZDNÍHO ŘÁDU (STATIONS) ---
     async getTimetable(id, attributes, details) {
         let fullData = details ? details._cachedFullData : null;
         if (!fullData) {
