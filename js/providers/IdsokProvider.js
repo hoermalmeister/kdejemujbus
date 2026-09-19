@@ -99,7 +99,7 @@ export default class IdsokProvider extends BaseProvider {
     async fetchFullDetails(id) {
         try {
             // Žádný Render, ptáme se napřímo CestujOK!
-            const targetUrl = `https://cestujok.cz/idspublicservices/api/service/position/${id}`;
+            const targetUrl = `https://cestujok.cz/idspublicservices/api/service/${id}`;
             
             const response = await fetch(targetUrl, {
                 method: 'GET',
