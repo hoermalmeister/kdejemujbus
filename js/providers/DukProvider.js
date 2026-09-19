@@ -235,7 +235,7 @@ export default class DukProvider extends BaseProvider {
         return stops;
     }
 
-   // --- PŘEPRACOVANÁ FUNKCE: Stahování trasy z Dukfinder přes CORS Proxy ---
+// --- STAHOVÁNÍ TRASY DÚK PŘES VLASTNÍ MŮSTEK ---
     async getRouteInfo(globalId, attributes, details) {
         if (!attributes || !attributes.cisjrRun) return null;
 
@@ -245,20 +245,14 @@ export default class DukProvider extends BaseProvider {
         if (!routeId || !tripId) return null;
 
         try {
-            const targetUrl = 'https://dukfinder.sap1k.cz/api/GetTripGeometry';
-            
-            // Zabalení do corsproxy.io, která je na tyhle blokády nejlepší
-            const proxyUrl = `https://corsproxy.io/?${encodeURIComponent(targetUrl)}`;
+            // Použijeme tvou Railway URL
+            const targetUrl = 'https://grapp-bridge-production.up.railway.app/duk/route';
 
-            const response = await fetch(proxyUrl, {
+            const response = await fetch(targetUrl, {
                 method: 'POST',
                 headers: {
-                    'accept': '*/*',
-                    'content-type': 'application/json',
-                    // Tyhle hlavičky už prohlížeči nevadí, corsproxy.io je tam protlačí z vlastní IP
-                    'user-agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/122.0.0.0'
+                    'Content-Type': 'application/json'
                 },
-                // Tělo musí být JSON, jak jsi ukázal ve svém cURL dotazu
                 body: JSON.stringify({
                     line_displayed: String(routeId),
                     trip: parseInt(tripId, 10)
@@ -266,22 +260,21 @@ export default class DukProvider extends BaseProvider {
             });
 
             if (!response.ok) {
-                console.warn(`Nepodařilo se stáhnout trasu DÚK (${routeId}/${tripId}): ${response.status}`);
+                console.warn(`Nepodařilo se stáhnout trasu DÚK z vlastního Můstku (${routeId}/${tripId}): ${response.status}`);
                 return null;
             }
 
             const rawRoute = await response.json();
             
-            // Dukfinder občas vrátí práznou odpověď nebo chybu v nestandardním formátu
             if (!Array.isArray(rawRoute) || rawRoute.length === 0) return null;
 
-            // Převod na čisté pole [longitude, latitude] pro MapLibre GL
+            // MapLibre čeká [lng, lat]
             const maplibCoordinates = rawRoute.map(point => [point.lng, point.lat]);
             
             return maplibCoordinates;
 
         } catch (error) {
-            console.error("Chyba při stahování trasy z Dukfinderu (přes Proxy):", error);
+            console.error("Chyba při stahování trasy z vlastního DÚK Můstku:", error);
             return null;
         }
     }
