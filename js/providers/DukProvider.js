@@ -239,13 +239,14 @@ export default class DukProvider extends BaseProvider {
     async getRouteInfo(globalId, attributes, details) {
         if (!attributes || !attributes.cisjrRun) return null;
 
-        const routeId = attributes.cisjrFullLine || attributes.cisjrLine; 
+        // OPRAVA: Dukfinder API vyžaduje striktně "line_displayed" (krátké číslo z autobusu)
+        // Ignorujeme cisjrFullLine a vezmeme čistě cisjrLine
+        const routeId = attributes.cisjrLine; 
         const tripId = attributes.cisjrRun;
 
         if (!routeId || !tripId) return null;
 
         try {
-            // Použijeme tvou Railway URL
             const targetUrl = 'https://grapp-bridge-production.up.railway.app/duk/route';
 
             const response = await fetch(targetUrl, {
@@ -260,7 +261,7 @@ export default class DukProvider extends BaseProvider {
             });
 
             if (!response.ok) {
-                console.warn(`Nepodařilo se stáhnout trasu DÚK z vlastního Můstku (${routeId}/${tripId}): ${response.status}`);
+                console.warn(`Nepodařilo se stáhnout trasu DÚK (${routeId}/${tripId}): ${response.status}`);
                 return null;
             }
 
@@ -274,7 +275,7 @@ export default class DukProvider extends BaseProvider {
             return maplibCoordinates;
 
         } catch (error) {
-            console.error("Chyba při stahování trasy z vlastního DÚK Můstku:", error);
+            console.error("Chyba při stahování trasy z DÚK Můstku:", error);
             return null;
         }
     }
