@@ -235,10 +235,8 @@ export default class DukProvider extends BaseProvider {
         return stops;
     }
 
-    // --- NOVÁ FUNKCE: Přímé stahování tvaru z Dukfinder.sap1k.cz ---
+   // --- PŘEPRACOVANÁ FUNKCE: Stahování trasy z Dukfinder přes CORS Proxy ---
     async getRouteInfo(globalId, attributes, details) {
-        // Potřebujeme buď plné číslo linky ze slovníku (app.js to dodá jako cisjrFullLine),
-        // nebo se aspoň pokusíme použít to krátké zobrazené číslo a cisjrRun
         if (!attributes || !attributes.cisjrRun) return null;
 
         const routeId = attributes.cisjrFullLine || attributes.cisjrLine; 
@@ -247,24 +245,20 @@ export default class DukProvider extends BaseProvider {
         if (!routeId || !tripId) return null;
 
         try {
-            const response = await fetch('https://dukfinder.sap1k.cz/api/GetTripGeometry', {
+            const targetUrl = 'https://dukfinder.sap1k.cz/api/GetTripGeometry';
+            
+            // Zabalení do corsproxy.io, která je na tyhle blokády nejlepší
+            const proxyUrl = `https://corsproxy.io/?${encodeURIComponent(targetUrl)}`;
+
+            const response = await fetch(proxyUrl, {
                 method: 'POST',
                 headers: {
                     'accept': '*/*',
-                    'accept-language': 'en-US,en;q=0.9,cs;q=0.8',
-                    'cache-control': 'no-cache',
                     'content-type': 'application/json',
-                    'origin': 'https://dukfinder.sap1k.cz',
-                    'referer': 'https://dukfinder.sap1k.cz/mapa',
-                    'sec-ch-ua': '"Chromium";v="122", "Not(A:Brand";v="24", "Google Chrome";v="122"',
-                    'sec-ch-ua-mobile': '?0',
-                    'sec-ch-ua-platform': '"Windows"',
-                    'sec-fetch-dest': 'empty',
-                    'sec-fetch-mode': 'cors',
-                    'sec-fetch-site': 'same-origin',
-                    'user-agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36'
+                    // Tyhle hlavičky už prohlížeči nevadí, corsproxy.io je tam protlačí z vlastní IP
+                    'user-agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/122.0.0.0'
                 },
-                // Tělo přesně podle Dukfinder API požadavků
+                // Tělo musí být JSON, jak jsi ukázal ve svém cURL dotazu
                 body: JSON.stringify({
                     line_displayed: String(routeId),
                     trip: parseInt(tripId, 10)
@@ -278,16 +272,16 @@ export default class DukProvider extends BaseProvider {
 
             const rawRoute = await response.json();
             
+            // Dukfinder občas vrátí práznou odpověď nebo chybu v nestandardním formátu
             if (!Array.isArray(rawRoute) || rawRoute.length === 0) return null;
 
-            // Dukfinder vrací rovnou objekty se správnými jmény: {lat: 50.1, lng: 14.2}
-            // Pro MapLibre / WebGL musíme vrátit prosté pole v pořadí [lng, lat]
+            // Převod na čisté pole [longitude, latitude] pro MapLibre GL
             const maplibCoordinates = rawRoute.map(point => [point.lng, point.lat]);
             
             return maplibCoordinates;
 
         } catch (error) {
-            console.error("Chyba při stahování trasy z Dukfinderu:", error);
+            console.error("Chyba při stahování trasy z Dukfinderu (přes Proxy):", error);
             return null;
         }
     }
