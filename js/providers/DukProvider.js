@@ -4,8 +4,8 @@ export default class DukProvider extends BaseProvider {
     constructor() {
         super();
         this.providerName = 'DÚK';
-        this.apiUrl = 'grapp-bridge-production.up.railway.app/duk'; 
-        this.detailUrl = 'grapp-bridge-production.up.railway.app/detail';
+        this.apiUrl = 'https://grapp-bridge-production.up.railway.app/duk'; 
+        this.detailUrl = 'https://grapp-bridge-production.up.railway.app/detail';
 
         this.tripsCache = null;
         this.segmentsCache = null;
