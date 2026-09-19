@@ -9,15 +9,25 @@ export default class IdsokProvider extends BaseProvider {
 
     async fetchData() {
         try {
-            const response = await fetch(this.apiUrl);
-            if (!response.ok) throw new Error(`IDSOK Proxy chyba: ${response.status}`);
+            // Zeptáme se napřímo! Žádný Railway, žádný Render.
+            const response = await fetch('https://cestujok.cz/idspublicservices/api/service/position', {
+                method: 'GET',
+                // Tyto hlavičky občas pomohou, pokud by prohlížeč reptal na CORS
+                headers: {
+                    'Accept': 'application/json'
+                }
+            });
+
+            if (!response.ok) throw new Error(`Přímý IDSOK selhal: ${response.status}`);
             
-            const data = await response.json();
-            // Ujistíme se, že pracujeme s polem
-            const trips = Array.isArray(data) ? data : (data.connections || []);
-            return this.normalize(trips);
+            const rawData = await response.json();
+            
+            // Očekávám, že struktura rawData.data nebo surového pole zůstává
+            const dataArray = Array.isArray(rawData) ? rawData : (rawData.data || rawData.points || []);
+            return this.normalize(dataArray);
+
         } catch (error) {
-            console.error("Chyba IDSOK:", error.message);
+            console.error("Chyba při přímém stahování IDSOK:", error.message);
             return [];
         }
     }
