@@ -132,25 +132,36 @@ export default class IdsokProvider extends BaseProvider {
     // --- 4. ZPRACOVÁNÍ TVARU LINKY (WKT) ---
     parseWKT(wktString) {
         if (!wktString || typeof wktString !== 'string') return [];
+        
         try {
-            const matches = wktString.match(/\(([^()]+)\)/g);
-            if (!matches) return [];
-            
+            let cleanString = wktString.replace(/MULTILINESTRING|LINESTRING/g, '')
+                                       .replace(/\(/g, '')
+                                       .replace(/\)/g, '')
+                                       .trim();
+
+            if (!cleanString) return [];
+
             const coordinates = [];
-            for (const match of matches) {
-                const cleanMatch = match.replace(/[()]/g, '');
-                const points = cleanMatch.split(',');
+            // Rozdělíme string podle čárek (každá čárka odděluje jeden bod)
+            const points = cleanString.split(',');
+            
+            for (const point of points) {
+                // Rozdělíme konkrétní bod podle mezery (longitude latitude)
+                const coords = point.trim().split(/\s+/);
                 
-                for (const point of points) {
-                    const coords = point.trim().split(' ');
-                    if (coords.length >= 2) {
-                        // Většina map očekává [lat, lon], takže to otočíme (WKT dává většinou lon lat)
-                        coordinates.push([parseFloat(coords[1]), parseFloat(coords[0])]);
+                if (coords.length >= 2) {
+                    const lon = parseFloat(coords[0]);
+                    const lat = parseFloat(coords[1]);
+                    
+                    if (!isNaN(lon) && !isNaN(lat)) {
+                        coordinates.push([lat, lon]); 
                     }
                 }
             }
+            
             return coordinates;
         } catch (e) {
+            console.error("Chyba při parsování WKT z IDSOK:", e);
             return [];
         }
     }
