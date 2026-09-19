@@ -129,11 +129,12 @@ export default class IdsokProvider extends BaseProvider {
         };
     }
 
-    // --- 4. ZPRACOVÁNÍ TVARU LINKY (WKT) ---
+// --- 4. ZPRACOVÁNÍ TVARU LINKY (WKT) ---
     parseWKT(wktString) {
         if (!wktString || typeof wktString !== 'string') return [];
         
         try {
+            // Očistíme string od názvů a vnějších závorek (MULTILINESTRING i LINESTRING)
             let cleanString = wktString.replace(/MULTILINESTRING|LINESTRING/g, '')
                                        .replace(/\(/g, '')
                                        .replace(/\)/g, '')
@@ -142,11 +143,9 @@ export default class IdsokProvider extends BaseProvider {
             if (!cleanString) return [];
 
             const coordinates = [];
-            // Rozdělíme string podle čárek (každá čárka odděluje jeden bod)
             const points = cleanString.split(',');
             
             for (const point of points) {
-                // Rozdělíme konkrétní bod podle mezery (longitude latitude)
                 const coords = point.trim().split(/\s+/);
                 
                 if (coords.length >= 2) {
@@ -154,7 +153,9 @@ export default class IdsokProvider extends BaseProvider {
                     const lat = parseFloat(coords[1]);
                     
                     if (!isNaN(lon) && !isNaN(lat)) {
-                        coordinates.push([lat, lon]); 
+                        // WEBGL ZMĚNA: Mapbox/MapLibre/Deck.gl očekávají [longitude, latitude]!
+                        // Proto posíláme první X (lon) a pak Y (lat). Už to neotáčíme.
+                        coordinates.push([lon, lat]); 
                     }
                 }
             }
