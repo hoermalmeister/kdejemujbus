@@ -4,7 +4,7 @@ export default class IdsokProvider extends BaseProvider {
     constructor() {
         super();
         this.providerName = 'IDSOK';
-        this.apiUrl = 'https://grapp-bridge.onrender.com/idsok'; 
+        this.apiUrl = 'https://grapp-bridge-production.up.railway.app/idsok'; 
     }
 
     async fetchData() {
