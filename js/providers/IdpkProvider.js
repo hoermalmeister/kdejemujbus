@@ -4,12 +4,10 @@ export default class IdpkProvider extends BaseProvider {
     constructor() {
         super();
         this.providerName = 'IDPK';
-        this.apiUrl = 'https://grapp-bridge.onrender.com/idpk';
-        this.detailUrl = 'https://grapp-bridge.onrender.com/idpk/detail?id=';
-        this.timetableUrl = 'https://grapp-bridge.onrender.com/idpk/timetable?id=';
+        this.apiUrl = 'https://grapp-bridge-production.up.railway.app/idpk';
+        this.detailUrl = 'https://grapp-bridge-production.up.railway.app/idpk/detail?id=';
+        this.timetableUrl = 'https://grapp-bridge-production.up.railway.app/idpk/timetable?id=';
         this.finishedVehicles = new Set(); 
-        
-        // [NOVÉ] Paměť pro minulé polohy vozidel (stejné jako u VDV)
         this.vehicleHistory = new Map(); 
     }
 
