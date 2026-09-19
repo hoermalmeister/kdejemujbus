@@ -4,10 +4,10 @@ export default class PidProvider extends BaseProvider {
     constructor() {
         super();
         this.providerName = 'PID';
-        this.apiUrl = 'https://grapp-bridge.onrender.com/pid';
-        this.detailUrl = 'https://grapp-bridge.onrender.com/pid/detail';
-        this.shapeUrl = 'https://grapp-bridge.onrender.com/pid/shape';
-        this.timetableUrl = 'https://grapp-bridge.onrender.com/pid/timetable';
+        this.apiUrl = 'https://grapp-bridge-production.up.railway.app/pid';
+        this.detailUrl = 'https://grapp-bridge-production.up.railway.app/pid/detail';
+        this.shapeUrl = 'https://grapp-bridge-production.up.railway.app/pid/shape';
+        this.timetableUrl = 'https://grapp-bridge-production.up.railway.app/pid/timetable';
     }
 
     async fetchData() {
