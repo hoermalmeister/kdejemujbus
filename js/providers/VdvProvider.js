@@ -4,9 +4,9 @@ export default class VdvProvider extends BaseProvider {
     constructor() {
         super();
         this.providerName = 'VDV';
-        this.apiUrl = 'https://grapp-bridge.onrender.com/vdv';
-        this.detailUrl = 'https://grapp-bridge.onrender.com/vdv/detail?id=';
-        this.timetableUrl = 'https://grapp-bridge.onrender.com/vdv/timetable?id=';
+        this.apiUrl = 'https://grapp-bridge-production.up.railway.app/vdv';
+        this.detailUrl = 'https://grapp-bridge-production.up.railway.app/vdv/detail?id=';
+        this.timetableUrl = 'https://grapp-bridge-production.up.railway.app/vdv/timetable?id=';
         this.finishedVehicles = new Set();
     }
 
