@@ -4,11 +4,8 @@ export default class IredoProvider extends BaseProvider {
     constructor() {
         super();
         this.providerName = 'IREDO';
-        // URL pro seznam všech spojů v regionu (přes Můstek kvůli CORS)
-        this.apiUrl = 'https://grapp-bridge.onrender.com/iredo'; 
-        // Základní URL pro detail spoje (CORS tu už nevadí, použijeme proxy ze spojenky nebo můstku)
-        // POZOR: I tento endpoint musí běžet přes Můstek, pokud iredo.online hází CORS
-        this.detailUrl = 'https://grapp-bridge.onrender.com/iredo/detail?id=';
+        this.apiUrl = 'https://grapp-bridge-production.up.railway.app/iredo';
+        this.detailUrl = 'https://grapp-bridge-production.up.railway.app/iredo/detail?id=';
     }
 
     async fetchData() {
