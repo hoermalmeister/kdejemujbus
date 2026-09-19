@@ -4,7 +4,6 @@ export default class IdsokProvider extends BaseProvider {
     constructor() {
         super();
         this.providerName = 'IDSOK';
-        this.apiUrl = 'https://grapp-bridge-production.up.railway.app/idsok'; 
     }
 
     async fetchData() {
@@ -99,10 +98,20 @@ export default class IdsokProvider extends BaseProvider {
 
     async fetchFullDetails(id) {
         try {
-            const response = await fetch(`https://grapp-bridge.onrender.com/idsok/detail?id=${id}`);
+            // Žádný Render, ptáme se napřímo CestujOK!
+            const targetUrl = `https://cestujok.cz/idspublicservices/api/service/position/${id}`;
+            
+            const response = await fetch(targetUrl, {
+                method: 'GET',
+                headers: {
+                    'Accept': 'application/json'
+                }
+            });
+            
             if (!response.ok) return null;
             return await response.json();
         } catch (error) {
+            console.error("Chyba při přímém stahování detailu IDSOK:", error.message);
             return null;
         }
     }
