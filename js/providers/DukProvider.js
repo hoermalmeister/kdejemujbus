@@ -7,23 +7,8 @@ export default class DukProvider extends BaseProvider {
         this.apiUrl = 'https://grapp-bridge-production.up.railway.app/duk'; 
         this.detailUrl = 'https://grapp-bridge-production.up.railway.app/duk/detail';
 
-        this.tripsCache = null;
-        this.segmentsCache = null;
-        this.loadShapes();
-    }
-
-    async loadShapes() {
-        try {
-            const [tripsRes, segmentsRes] = await Promise.all([
-                fetch('https://raw.githubusercontent.com/hoermalmeister/grapp-bridge/main/data/duk_trips.json'),
-                fetch('https://raw.githubusercontent.com/hoermalmeister/grapp-bridge/main/data/duk_segments.json')
-            ]);
-            this.tripsCache = await tripsRes.json();
-            this.segmentsCache = await segmentsRes.json();
-            console.log(`DÚK tvary načteny ze statických dat.`);
-        } catch (e) {
-            console.error('Chyba při načítání DÚK tvarů:', e);
-        }
+        // KOMPLETNĚ ODSTRANĚNA CACHE NA TVARY LINEK.
+        // Už nemusíme čekat na loadShapes() !
     }
     
     async fetchData() {
@@ -127,7 +112,6 @@ export default class DukProvider extends BaseProvider {
         headKeys.forEach(el => {
             const keyText = el.textContent.trim();
             const valEl = el.nextElementSibling;
-            // ÚMYSLNĚ VYMAZÁNO ČTENÍ "LinkoSpoj:", ABY NÁM HTML NEPŘEPSALO NAŠI 6MÍSTNOU LINKU!
             if (keyText === "Cíl:" && valEl) destination = valEl.textContent.trim();
         });
 
@@ -251,26 +235,60 @@ export default class DukProvider extends BaseProvider {
         return stops;
     }
 
+    // --- NOVÁ FUNKCE: Přímé stahování tvaru z Dukfinder.sap1k.cz ---
     async getRouteInfo(globalId, attributes, details) {
-        if (!this.tripsCache || !this.segmentsCache) return null;
-        if (!attributes || !attributes.cisjrFullLine || !attributes.cisjrRun) return null;
+        // Potřebujeme buď plné číslo linky ze slovníku (app.js to dodá jako cisjrFullLine),
+        // nebo se aspoň pokusíme použít to krátké zobrazené číslo a cisjrRun
+        if (!attributes || !attributes.cisjrRun) return null;
 
-        const tripKey = `${attributes.cisjrFullLine}_${attributes.cisjrRun}`;
-        const segmentList = this.tripsCache[tripKey];
+        const routeId = attributes.cisjrFullLine || attributes.cisjrLine; 
+        const tripId = attributes.cisjrRun;
 
-        if (!segmentList) {
-            return null; 
-        }
+        if (!routeId || !tripId) return null;
 
-        const coords = [];
-        for (const segId of segmentList) {
-            const shape = this.segmentsCache[segId];
-            if (shape) {
-                coords.push(...shape);
+        try {
+            const response = await fetch('https://dukfinder.sap1k.cz/api/GetTripGeometry', {
+                method: 'POST',
+                headers: {
+                    'accept': '*/*',
+                    'accept-language': 'en-US,en;q=0.9,cs;q=0.8',
+                    'cache-control': 'no-cache',
+                    'content-type': 'application/json',
+                    'origin': 'https://dukfinder.sap1k.cz',
+                    'referer': 'https://dukfinder.sap1k.cz/mapa',
+                    'sec-ch-ua': '"Chromium";v="122", "Not(A:Brand";v="24", "Google Chrome";v="122"',
+                    'sec-ch-ua-mobile': '?0',
+                    'sec-ch-ua-platform': '"Windows"',
+                    'sec-fetch-dest': 'empty',
+                    'sec-fetch-mode': 'cors',
+                    'sec-fetch-site': 'same-origin',
+                    'user-agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36'
+                },
+                // Tělo přesně podle Dukfinder API požadavků
+                body: JSON.stringify({
+                    line_displayed: String(routeId),
+                    trip: parseInt(tripId, 10)
+                })
+            });
+
+            if (!response.ok) {
+                console.warn(`Nepodařilo se stáhnout trasu DÚK (${routeId}/${tripId}): ${response.status}`);
+                return null;
             }
-        }
 
-        if (coords.length === 0) return null;
-        return coords;
+            const rawRoute = await response.json();
+            
+            if (!Array.isArray(rawRoute) || rawRoute.length === 0) return null;
+
+            // Dukfinder vrací rovnou objekty se správnými jmény: {lat: 50.1, lng: 14.2}
+            // Pro MapLibre / WebGL musíme vrátit prosté pole v pořadí [lng, lat]
+            const maplibCoordinates = rawRoute.map(point => [point.lng, point.lat]);
+            
+            return maplibCoordinates;
+
+        } catch (error) {
+            console.error("Chyba při stahování trasy z Dukfinderu:", error);
+            return null;
+        }
     }
 }
