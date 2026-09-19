@@ -416,8 +416,23 @@ function renderDetailView() {
         // Z mapy odmažeme šipku (směr) POUZE pokud je už v cíli (Neznámé na trase šipku potřebují)
         if (activeTrainData.props && d.delay === 'V cíli') {
             activeTrainData.props.heading = null;
+            
+            // --- OPRAVA SMYČKY: Místo celkového stahování updateData() upravíme vrstvu jen v mapě! ---
+            // Tím se vyhneme nekonečné smyčce a ušetříme server
+            const featuresSource = map.getSource('vehicles');
+            if (featuresSource) {
+                // Přegenerujeme ikonku jen pro toto jediné vozidlo, aby přišlo o šipku
+                activeTrainData.props.iconId = getOrCreateIcon(map, activeTrainData.props.provider, activeTrainData.props.route, null);
+                
+                // Mírný hack pro MapLibre - donutíme data v source se překreslit s novou ikonkou
+                const currentData = featuresSource._data;
+                const featureIndex = currentData.features.findIndex(f => f.properties.id === activeTrainData.props.id);
+                if (featureIndex > -1) {
+                    currentData.features[featureIndex].properties.iconId = activeTrainData.props.iconId;
+                    featuresSource.setData(currentData);
+                }
+            }
         }
-        if (typeof updateData === "function") updateData(); 
     } else if (String(d.delay).startsWith('-')) {
         delayColor = '#bada55'; 
         delayText = d.delay;    
