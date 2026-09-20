@@ -98,7 +98,7 @@ export default class IredoProvider extends BaseProvider {
             // PŮVODNÍ CÍL BYL: https://iredo.online/oredo/detail/${id}?geom=true
             // Pokud bude CORS problém, odkážeme to přes Můstek (stejně jako jsi udělal v VDV endpointu).
             // Příklad pro Můstek:
-            const response = await fetch(`https://grapp-bridge.onrender.com/iredo/detail?id=${id}`);
+            const response = await fetch(`https://grapp-bridge-production.up.railway.app/iredo/detail?id=${id}`);
             
             if (!response.ok) return null;
             return await response.json();
