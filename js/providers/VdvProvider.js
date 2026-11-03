@@ -131,37 +131,6 @@ export default class VdvProvider extends BaseProvider {
         };
     }
 
-    async getRouteInfo(id, attributes, details) {
-        try {
-            // Pokud chybí detaily, nemáme z čeho linkospoj vyčíst
-            if (!details) return null;
-
-            // Můstek vrací formát "841129/25" buď v timetableRoute nebo v route
-            const linkospoj = details.timetableRoute || details.route;
-            if (!linkospoj) return null;
-
-            // Převedeme lomítko na podtržítko, aby to sedělo s klíči z tvého Python skriptu ("841129_25")
-            const cisjrId = linkospoj.replace('/', '_').replace(/\s/g, '');
-
-            // Nyní konečně voláme Můstek
-            const response = await fetch(`https://grapp-bridge-production.up.railway.app/vdv/route?id=${cisjrId}`);
-            
-            if (!response.ok) return null;
-            
-            const data = await response.json();
-            
-            // Vrátíme body křivky k vykreslení
-            if (data && data.shape && data.shape.length > 0) {
-                return data.shape;
-            }
-            
-            return null;
-        } catch (error) {
-            console.error("Chyba při stahování VDV trasy z Můstku:", error);
-            return null;
-        }
-    }
-
     async getTimetable(globalId, attributes) {
         if (!attributes || attributes.id === undefined) return null;
 
