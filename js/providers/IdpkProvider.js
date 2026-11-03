@@ -65,7 +65,7 @@ export default class IdpkProvider extends BaseProvider {
                 lon: trip.lng, 
                 heading: heading,
                 route: shortLine, 
-                headsign: trip.finalStopName || 'Neznámý cíl',
+                headsign: this.isMissingValue(trip.finalStopName) ? 'Neznámý cíl' : trip.finalStopName,
                 delay: delayText,
                 globalMatchId: `idpk_${trip.id}`,
                 attributes: {
@@ -76,6 +76,21 @@ export default class IdpkProvider extends BaseProvider {
             });
         }
         return vehicles;
+    }
+
+    isMissingValue(value) {
+        return !value || /n\/a/i.test(value);
+    }
+
+    // Údaje jsou nově v <dl class="facts">, starší podoba s tabulkou zůstává jako záloha
+    parseFacts(doc) {
+        const facts = {};
+        const add = (keyEl, valueEl) => {
+            if (keyEl && valueEl) facts[keyEl.textContent.trim().toLowerCase()] = valueEl.textContent.trim();
+        };
+        doc.querySelectorAll('dl.facts > div').forEach(item => add(item.querySelector('dt'), item.querySelector('dd')));
+        doc.querySelectorAll('table tbody tr').forEach(row => add(row.querySelector('th'), row.querySelector('td')));
+        return facts;
     }
 
     async getDetails(globalId, attributes) {
@@ -92,7 +107,7 @@ export default class IdpkProvider extends BaseProvider {
             let linka = attributes.fullLine || attributes.text;
             let spoj = "";
             let zastavka = "Na trase...";
-            let destination = attributes.finalStopName || "Neznámý cíl";
+            let destination = this.isMissingValue(attributes.finalStopName) ? "Neznámý cíl" : attributes.finalStopName;
 
             // --- ZPOŽDĚNÍ: Přesná struktura jako u VDV ---
             let delayVal = attributes.delay;
@@ -107,27 +122,27 @@ export default class IdpkProvider extends BaseProvider {
                 delayText = `${delayNum} min`;
             }
 
-            const rows = doc.querySelectorAll('table tbody tr');
-            rows.forEach(row => {
-                const th = row.querySelector('th');
-                const td = row.querySelector('td');
-                if (th && td) {
-                    const key = th.textContent.trim();
-                    const val = td.textContent.trim();
-                    
-                    if (key === "Linka") linka = val;
-                    if (key === "Spoj") spoj = val;
-                    if (key === "Zastávka") zastavka = val;
-                    if (key === "Zpoždění") {
-                        // Očistíme text od "min." a vytáhneme číslo
-                        let parsed = parseInt(val.replace('min.', '').trim());
-                        if (!isNaN(parsed)) {
-                            delayNum = parsed;
-                            delayText = `${parsed} min`;
-                        }
-                    }
-                }
-            });
+            const facts = this.parseFacts(doc);
+
+            const lineAndRun = facts['linka / spoj'];
+            if (lineAndRun) {
+                const [lineValue, runValue] = lineAndRun.split('/').map(part => part.trim());
+                if (lineValue) linka = lineValue;
+                if (runValue) spoj = runValue;
+            }
+            if (facts['linka']) linka = facts['linka'];
+            if (facts['spoj']) spoj = facts['spoj'];
+
+            const stopName = facts['zastávka'];
+            if (stopName && !this.isMissingValue(stopName)) zastavka = stopName;
+
+            // Zpoždění je nově mimo seznam údajů, např. "+1 min"
+            const delaySource = doc.querySelector('.delay-value')?.textContent || facts['zpoždění'];
+            const parsedDelay = parseInt(String(delaySource || '').replace('+', '').trim(), 10);
+            if (!isNaN(parsedDelay)) {
+                delayNum = parsedDelay;
+                delayText = `${parsedDelay} min`;
+            }
 
             let isAtDestination = false;
             if (zastavka !== 'Na trase...' && destination !== 'Neznámý cíl' && zastavka.toLowerCase() === destination.toLowerCase()) {
