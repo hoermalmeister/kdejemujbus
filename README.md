@@ -22,7 +22,7 @@
 | DPMHK | [ ] | [ ] | [ ] | [ ] | [ ] |
 | DPKV | [ ] | [ ] | [ ] | [ ] | [ ] |
 | DPMJ | [ ] | [ ] | [ ] | [ ] | [ ] |
-| TSHB | [ ] | [ ] | [ ] | [ ] | [ ] |
+| TSHB | ✅ | ✅ | ✅ | ✅ | ✅ |
 | DPMLB | [ ] | [ ] | [ ] | [ ] | [ ] |
 | Kladno | [ ] | [ ] | [ ] | [ ] | [ ] |
 
@@ -48,7 +48,7 @@ https://online.dpmp.cz/
 https://dpmhk.qrbus.me/  
 https://dopravniportal.dpkv.cz/dic/  
 https://gis.jihlava-city.cz/server1/rest/services/verejnost/Ji_MHD_aktualni/MapServer/50/query?where=objectid%3E0&outFields=*&f=json  
-https://hb-mhd-bridge-1.onrender.com/hb.geojson  
+https://www.mhdhb.cz/  
 https://preparator.eternal.cz/services/mboleslav/bus_positions?guid=146  
 https://www.arriva.cz/cs/dopravni-info/aktualni-poloha-autobusu-online?mainType=MHD  
   
