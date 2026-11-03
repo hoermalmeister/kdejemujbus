@@ -75,8 +75,16 @@ export default class DpmdProvider extends BaseProvider {
         };
     }
 
-    getRouteInfo(id, attributes) {
-        return attributes ? getGtfsRoute(this.linkospoj(attributes)) : null;
+    // Trasu posílá přímo DPMD, jízdní řády z GTFS jsou jen záloha
+    async getRouteInfo(id, attributes) {
+        if (!attributes) return null;
+        try {
+            const response = await fetch(`${BRIDGE_URL}/route?vehicle=${encodeURIComponent(attributes.vehicle)}`);
+            if (response.ok) return await response.json();
+        } catch (error) {
+            console.error('Chyba trasy DPMD:', error.message);
+        }
+        return getGtfsRoute(this.linkospoj(attributes));
     }
 
     async getTimetable(id, attributes) {
