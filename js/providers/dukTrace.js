@@ -11,6 +11,7 @@ const DRIVEN_SPIKE_LEG_M = 150;
 const START_TOLERANCE_M = 50;
 const CHAIN_GAP_M = 600;
 const MIN_BRANCH_POINTS = 3;
+const OUTLIER_JUMP_M = 2000;
 
 function distanceM(a, b) {
     const dLat = (a.Lat - b.Lat) * 111320;
@@ -100,6 +101,23 @@ function orderPlan(planPoints) {
     return { main, branches };
 }
 
+// Zdroj občas pošle bod úplně mimo trasu. Uprostřed ho poznáme tak, že sousedé jsou blízko
+// sebe a on daleko od obou, na konci projeté stopy podle velkého skoku.
+function removeOutliers(points, { trimEnds }) {
+    let result = points.filter((point, i) => {
+        if (i === 0 || i === points.length - 1) return true;
+        const toPrev = distanceM(points[i - 1], point);
+        const toNext = distanceM(point, points[i + 1]);
+        if (toPrev <= OUTLIER_JUMP_M || toNext <= OUTLIER_JUMP_M) return true;
+        return distanceM(points[i - 1], points[i + 1]) >= 0.5 * Math.min(toPrev, toNext);
+    });
+    if (trimEnds) {
+        while (result.length >= 2 && distanceM(result[0], result[1]) > OUTLIER_JUMP_M) result = result.slice(1);
+        while (result.length >= 2 && distanceM(result[result.length - 1], result[result.length - 2]) > OUTLIER_JUMP_M) result = result.slice(0, -1);
+    }
+    return result;
+}
+
 // Odhadnuté časy občas posunou bod mimo pořadí, což by na mapě udělalo zub
 function removeSpikes(points, maxLegM) {
     return points.filter((point, i) => {
@@ -151,9 +169,10 @@ export function buildDukRoute(markers) {
     const valid = markers.filter(m => m && Number.isFinite(m.Lat) && Number.isFinite(m.Lng) && m.Lat !== 0 && m.Lng !== 0);
     const isDriven = (m) => String(m.Text).trim().startsWith('T');
 
-    const driven = removeSpikes(valid.filter(isDriven).sort((a, b) => a.ID - b.ID), DRIVEN_SPIKE_LEG_M);
+    const sortedDriven = valid.filter(isDriven).sort((a, b) => a.ID - b.ID);
+    const driven = removeSpikes(removeOutliers(sortedDriven, { trimEnds: true }), DRIVEN_SPIKE_LEG_M);
     const { main, branches } = orderPlan(valid.filter(m => !isDriven(m)));
-    const plan = removeSpikes(main, SPIKE_LEG_M);
+    const plan = removeSpikes(removeOutliers(main, { trimEnds: false }), SPIKE_LEG_M);
     const ahead = plan.slice(remainingStart(plan, driven[driven.length - 1]));
 
     const toCoordinates = (points) => points.map(p => [p.Lng, p.Lat]);
