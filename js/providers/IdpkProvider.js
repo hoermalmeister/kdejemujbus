@@ -13,7 +13,7 @@ export default class IdpkProvider extends BaseProvider {
 
     async fetchData() {
         try {
-            const response = await fetch(this.apiUrl);
+            const response = await this.fetchWithTimeout(this.apiUrl);
             if (!response.ok) throw new Error(`IDPK Proxy chyba: ${response.status}`);
             
             let rawData = await response.json();

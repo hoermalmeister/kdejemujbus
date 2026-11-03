@@ -12,7 +12,7 @@ export default class PidProvider extends BaseProvider {
 
     async fetchData() {
         try {
-            const response = await fetch(this.apiUrl);
+            const response = await this.fetchWithTimeout(this.apiUrl);
             if (!response.ok) throw new Error(`PID Můstek vrátil chybu: ${response.status}`);
             const data = await response.json();
             return this.normalize(data);

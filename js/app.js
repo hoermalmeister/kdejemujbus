@@ -8,6 +8,23 @@ import DukProvider from './providers/DukProvider.js';
 import VdvProvider from './providers/VdvProvider.js';
 import IdpkProvider from './providers/IdpkProvider.js';
 
+// --- OCHRANA PROTI PŘIBLÍŽENÍ CELÉ STRÁNKY NA TELEFONU ---
+// Mapa si gesta řeší sama. Pokud je hlavní vlákno zaneprázdněné, Safari může gesto
+// předat prohlížeči a přiblížit celou stránku. Po doběhnutí práce si pak dotyky
+// znovu bere mapa a stránka by už zpět zmenšit nešla.
+['gesturestart', 'gesturechange', 'gestureend'].forEach(type => {
+    document.addEventListener(type, e => e.preventDefault(), { passive: false });
+});
+const viewportMeta = document.getElementById('viewport-meta');
+const VIEWPORT_CONTENT = viewportMeta.content;
+if (window.visualViewport) {
+    window.visualViewport.addEventListener('resize', () => {
+        if (window.visualViewport.scale <= 1.01) return;
+        // Změna obsahu značky donutí prohlížeč vrátit měřítko na 1
+        viewportMeta.content = viewportMeta.content === VIEWPORT_CONTENT ? `${VIEWPORT_CONTENT}, viewport-fit=auto` : VIEWPORT_CONTENT;
+    });
+}
+
 const deduplicator = new Deduplicator();
 const providers = [
     new GrappProvider(),
@@ -40,7 +57,7 @@ let activeTrainData = { props: null, details: null, timetable: null };
 let jmkTwinsCache = new Map();
 
 let dukDict = {};
-fetch('https://raw.githubusercontent.com/hoermalmeister/grapp-bridge/main/data/duk_linkospoje.json')
+fetch('https://raw.githubusercontent.com/hoermalmeister/kdejemujbus-bridge/main/data/duk_linkospoje.json')
     .then(res => {
         if (!res.ok) throw new Error(`HTTP error! status: ${res.status}`);
         return res.json();
@@ -81,6 +98,8 @@ const map = new maplibregl.Map({
     center: [startLng, startLat], 
     zoom: startZoom,
     maxZoom: 19,
+    pixelRatio: Math.min(window.devicePixelRatio || 1, 2),
+    fadeDuration: 0,
     pitchWithRotate: false, 
     dragPitch: false,       
     touchPitch: false       
@@ -110,47 +129,69 @@ map.on('moveend', updateURL);
 map.on('zoomend', updateURL);
 
 // --- GENEROVÁNÍ ŠIPEK ---
+// Ikony se kreslí až ve chvíli, kdy si je mapa opravdu vyžádá (styleimagemissing),
+// takže se neplýtvá časem ani pamětí na vozidla mimo výřez.
+const MAX_CACHED_ICONS = 800;
+const ICON_SIZE = 44;
+const iconSpecs = new Map();
+const iconCanvas = document.createElement('canvas');
+iconCanvas.width = ICON_SIZE * 2;
+iconCanvas.height = ICON_SIZE * 2;
+const iconCtx = iconCanvas.getContext('2d', { willReadFrequently: true });
+const arrowPath = new Path2D("M 10.97,2.31 C 10.97,2.31 2.03,23.03 2.03,23.03 2.03,23.03 11.00,20.94 11.00,20.94 11.00,20.94 20.00,23.00 20.00,23.00 20.00,23.00 10.97,2.31 10.97,2.31 Z");
+
 function getOrCreateIcon(map, provider, routeText, heading) {
     const isCircle = heading === null || heading === undefined;
     // Zaokrouhlení azimutu, aby se negenerovalo zbytečně moc obrázků a RAM zůstala čistá
-    const safeHeading = isCircle ? 0 : Math.round(heading / 5) * 5;
-    const iconId = `veh-${provider}-${routeText}-${safeHeading}`;
+    const safeHeading = isCircle ? 0 : (Math.round(heading / 10) * 10) % 360;
+    const iconId = `veh-${provider}-${routeText}-${isCircle ? 'c' : safeHeading}`;
 
-    if (map.hasImage(iconId)) return iconId;
+    if (!iconSpecs.has(iconId)) iconSpecs.set(iconId, { provider, routeText, isCircle, safeHeading });
+    return iconId;
+}
 
-    const size = 44; 
-    const canvas = document.createElement('canvas');
-    canvas.width = size * 2; canvas.height = size * 2;
-    const ctx = canvas.getContext('2d');
-    
-    ctx.scale(2, 2); ctx.translate(size/2, size/2); 
+function drawIcon(iconId) {
+    const spec = iconSpecs.get(iconId);
+    if (!spec || map.hasImage(iconId)) return;
 
-    let fillColor = getProviderColor(provider);
+    const ctx = iconCtx;
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    ctx.clearRect(0, 0, iconCanvas.width, iconCanvas.height);
+    ctx.scale(2, 2); ctx.translate(ICON_SIZE / 2, ICON_SIZE / 2);
+
+    const fillColor = getProviderColor(spec.provider);
 
     ctx.save();
-    if (!isCircle) {
+    if (!spec.isCircle) {
         // Rotujeme pouze šipku vůči Canvasu
-        ctx.rotate(safeHeading * Math.PI / 180);
-        ctx.scale(1.4, 1.4); ctx.translate(-11, -15.5); 
-        
-        const path = new Path2D("M 10.97,2.31 C 10.97,2.31 2.03,23.03 2.03,23.03 2.03,23.03 11.00,20.94 11.00,20.94 11.00,20.94 20.00,23.00 20.00,23.00 20.00,23.00 10.97,2.31 10.97,2.31 Z");
-        ctx.fillStyle = fillColor; ctx.fill(path);
+        ctx.rotate(spec.safeHeading * Math.PI / 180);
+        ctx.scale(1.4, 1.4); ctx.translate(-11, -15.5);
+        ctx.fillStyle = fillColor; ctx.fill(arrowPath);
     } else {
-        ctx.beginPath(); ctx.arc(0, 0, 12, 0, 2 * Math.PI); 
+        ctx.beginPath(); ctx.arc(0, 0, 12, 0, 2 * Math.PI);
         ctx.fillStyle = fillColor; ctx.fill();
     }
-    ctx.restore(); 
+    ctx.restore();
 
-    // Text zůstává vodorovně vzhledem k obrázku 
-    if (routeText) {
+    // Text zůstává vodorovně vzhledem k obrázku
+    if (spec.routeText) {
         ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-        ctx.font = 'bold 11px sans-serif'; 
-        ctx.lineWidth = 3; ctx.strokeStyle = 'rgba(0,0,0,0.85)'; ctx.strokeText(routeText, 0, 0);
-        ctx.fillStyle = '#FFFFFF'; ctx.fillText(routeText, 0, 0);
+        ctx.font = 'bold 11px sans-serif';
+        ctx.lineWidth = 3; ctx.strokeStyle = 'rgba(0,0,0,0.85)'; ctx.strokeText(spec.routeText, 0, 0);
+        ctx.fillStyle = '#FFFFFF'; ctx.fillText(spec.routeText, 0, 0);
     }
 
-    map.addImage(iconId, ctx.getImageData(0, 0, size * 2, size * 2), { pixelRatio: 2 });
-    return iconId;
+    map.addImage(iconId, ctx.getImageData(0, 0, iconCanvas.width, iconCanvas.height), { pixelRatio: 2 });
+}
+
+map.on('styleimagemissing', e => drawIcon(e.id));
+
+function evictUnusedIcons(usedIconIds) {
+    const images = map.listImages();
+    if (images.length <= MAX_CACHED_ICONS) return;
+    for (const id of images) {
+        if (id.startsWith('veh-') && !usedIconIds.has(id)) map.removeImage(id);
+    }
 }
 
 // --- PO NAČTENÍ MAPY ---
@@ -158,7 +199,7 @@ map.on('load', () => {
     map.addSource('selected-route', { type: 'geojson', data: { type: 'Feature', geometry: { type: 'LineString', coordinates: [] } } });
     map.addLayer({ id: 'selected-route-layer', type: 'line', source: 'selected-route', layout: { 'line-join': 'round', 'line-cap': 'round' }, paint: { 'line-color': '#e67e22', 'line-width': 4, 'line-opacity': 0.8 } });
 
-    map.addSource('vehicles', { type: 'geojson', data: { type: 'FeatureCollection', features: [] } });
+    map.addSource('vehicles', { type: 'geojson', maxzoom: 12, data: { type: 'FeatureCollection', features: [] } });
     
     // --- JEDINÁ ABSOLUTNĚ SPRÁVNÁ VRSTVA ---
     map.addLayer({ 
@@ -187,7 +228,8 @@ map.on('load', () => {
             [e.point.x + padding, e.point.y + padding]
         ];
 
-        const features = map.queryRenderedFeatures(bbox, { layers: ['vehicles-layer'] });
+        const features = map.queryRenderedFeatures(bbox, { layers: ['vehicles-layer'] })
+            .map(f => ({ ...f, properties: hydrateProps(f.properties) }));
 
         if (!features || features.length === 0) {
             closeDetailPanel();
@@ -206,8 +248,11 @@ map.on('load', () => {
     map.on('mouseenter', 'vehicles-layer', () => map.getCanvas().style.cursor = 'pointer');
     map.on('mouseleave', 'vehicles-layer', () => map.getCanvas().style.cursor = '');
 
-    updateData();
-    setInterval(updateData, 15000);
+    refreshAll();
+    setInterval(() => { if (!document.hidden) refreshAll(); }, REFRESH_INTERVAL_MS);
+    document.addEventListener('visibilitychange', () => {
+        if (!document.hidden && Date.now() - lastRefreshAt >= REFRESH_INTERVAL_MS) refreshAll();
+    });
 });
 
 async function openVehicleDetail(props) {
@@ -639,192 +684,256 @@ function closeDetailPanel() {
     map.getSource('selected-route').setData({ type: 'Feature', geometry: { type: 'LineString', coordinates: [] } });
 }
 
-async function updateData() {
+// --- AKTUALIZACE POLOH ---
+// Každý zdroj se stahuje samostatně a vozidla se ukážou hned, jak dorazí, takže
+// pomalý nebo nedostupný zdroj nezdrží ostatní. Dokud předchozí dotaz na zdroj
+// běží, další se neposílá, a na pomalém připojení se tak dotazy nehromadí.
+const REFRESH_INTERVAL_MS = 15000;
+const STALE_PROVIDER_MS = 120000; // Tak dlouho držíme poslední polohy zdroje, který nic nevrátil
+const MIN_RENDER_GAP_MS = 1000;
+
+const providerStates = new Map(providers.map(p => [p, { vehicles: [], receivedAt: 0, inFlight: false }]));
+const vehicleIndex = new Map();
+let lastRefreshAt = 0;
+let lastRenderAt = 0;
+let renderTimer = null;
+let lastFeatureSignature = null;
+
+const vehicleKey = (v) => `${v.provider}|${v.id}`;
+
+// Mapa dostává jen to, co potřebuje ke kreslení. Zbytek se doplní až po kliknutí.
+function hydrateProps(featureProps) {
+    const v = vehicleIndex.get(featureProps.key);
+    if (!v) return featureProps;
+    const props = { ...v, iconId: featureProps.iconId, sortKey: featureProps.sortKey };
+    if (props.attributes) props.attributes = JSON.stringify(props.attributes);
+    return props;
+}
+
+function refreshAll() {
+    lastRefreshAt = Date.now();
+    providers.forEach(refreshProvider);
+    updateStatus();
+    if (isUserLocationActive) updateUserLocation(false);
+}
+
+async function refreshProvider(provider) {
+    const state = providerStates.get(provider);
+    if (state.inFlight) return;
+    state.inFlight = true;
+
     try {
-        statusDiv.innerText = 'Aktualizuji data...';
-        const fetchPromises = providers.map(p => p.fetchData());
-        const results = await Promise.allSettled(fetchPromises);
-        let allVehicles = [];
-        results.forEach((result) => { if (result.status === 'fulfilled') allVehicles = allVehicles.concat(result.value); });
+        const vehicles = await provider.fetchData();
+        // Prázdný výsledek často znamená výpadek, proto vozidla nezmizí hned
+        if (vehicles.length > 0 || Date.now() - state.receivedAt > STALE_PROVIDER_MS) {
+            state.vehicles = vehicles;
+            state.receivedAt = Date.now();
+        }
+    } catch (err) {
+        console.warn(`Aktualizace zdroje ${provider.providerName} selhala.`, err);
+    } finally {
+        state.inFlight = false;
+    }
 
-        await new Promise(r => setTimeout(r, 15));
+    scheduleRender();
+    if (activeTrainData.props && activeTrainData.props.provider === provider.providerName) {
+        pendingDetailRefresh = true;
+    }
+}
 
-        // --- 1. SBĚR DAT PRO KŘÍŽOVÉ FILTRY ---
-        const pidFullLines = new Set();
-        const pidFullConnections = new Set();
-        const iredoFullLines = new Set();
-        
-        const jmkVehiclesMap = new Map();
-        const idsokMatchKeys = new Set();
-        jmkTwinsCache.clear();
+let pendingDetailRefresh = false;
 
-        
+function scheduleRender() {
+    if (renderTimer) return;
+    const wait = Math.max(50, MIN_RENDER_GAP_MS - (Date.now() - lastRenderAt));
+    renderTimer = setTimeout(() => {
+        renderTimer = null;
+        lastRenderAt = Date.now();
+        try {
+            renderVehicles();
+        } catch (err) {
+            console.error(err);
+            statusDiv.innerText = "Chyba při zpracování dat.";
+        }
+    }, wait);
+}
 
-        allVehicles.forEach(v => {            
-            // [NOVÉ] PŘEKLAD KRÁTKÉ DÚK LINKY NA 6MÍSTNOU CISJR
-            if (v.provider === 'DÚK' && v.attributes && v.attributes.cisjrLine && v.attributes.cisjrRun) {
-                const cLine = String(v.attributes.cisjrLine).trim();
-                const cRun = String(v.attributes.cisjrRun).trim();
-                
-                const key1 = `${cLine}_${cRun}`;
-                const key2 = `${cLine.padStart(3, '0')}_${cRun}`;
-                
-                const translation = dukDict[key1] || dukDict[key2];
+function updateStatus() {
+    const loading = [...providerStates.values()].some(s => s.inFlight);
+    const count = vehicleIndex.size;
+    if (count === 0) statusDiv.innerText = loading ? 'Načítám data...' : 'Žádné spoje k zobrazení.';
+    else statusDiv.innerText = `Spojů na mapě: ${count}${loading ? ' (aktualizuji...)' : ''}`;
+}
 
-                if (translation) {
-                    const [fullLine, fullRun] = translation.split('_');
-                    
-                    // Původní 3místná linka žije dál, vytvoříme nový parametr FullLine
-                    v.attributes.cisjrFullLine = fullLine; 
-                    v.attributes.cisjrRun = fullRun;
-                    v.globalMatchId = `duk_${fullLine}_${fullRun}`;
-                }
-            }
+function collectVehicles() {
+    const allVehicles = [];
+    for (const state of providerStates.values()) {
+        for (const v of state.vehicles) {
+            v._isJmkTwin = false;
+            allVehicles.push(v);
+        }
+    }
+    return allVehicles;
+}
 
-            // Extrakce PID
-            if (v.provider === 'PID' && v.attributes) {
-                const pLineShort = String(v.route || v.attributes.text || "").trim();
-                if (pLineShort) {
-                    pidFullLines.add(pLineShort);
-                }
+function matchJmkTwins(allVehicles) {
+    jmkTwinsCache.clear();
 
-                // 2. Extrakce šestimístné linky a čísla spoje
-                const pLineLong = v.attributes.cisjrLine;
-                const pTrip = v.attributes.cisjrTrip;
+    const jmkByRoute = new Map();
+    allVehicles.forEach(v => {
+        if (v.provider !== 'IDS JMK') return;
+        const route = String(v.route).replace(/\D/g, '');
+        if (!jmkByRoute.has(route)) jmkByRoute.set(route, []);
+        jmkByRoute.get(route).push(v);
+    });
 
-                if (pLineLong) {
-                    const cleanLine = String(pLineLong).trim();
-                    
-                    // ZÁCHRANA PRO VDV: Přidáme i šestimístnou linku (např. "261467") do sítě!
-                    pidFullLines.add(cleanLine);
-                    
-                    if (pTrip) {
-                        const cleanTrip = String(pTrip).replace(/^0+/, '').trim() || "0";
-                        // TOTO SLOUŽÍ PRO SMAZÁNÍ DÚK:
-                        pidFullConnections.add(`${cleanLine}_${cleanTrip}`);
-                    }
-                }
-            }
-            
-            // Extrakce IREDO
-            if (v.provider === 'IREDO' && v.attributes && v.attributes.cisjrLine) {
-                iredoFullLines.add(v.attributes.cisjrLine);
-            }
-            
-            // Extrakce IDS JMK
-            if (v.provider === 'IDS JMK' && v.route) {
-                const runNum = v.attributes?.RouteID || v.attributes?.runNumber || v.attributes?.spoj || v.attributes?.kmenovySpoj || "";
-                if (runNum) {
-                    jmkVehiclesMap.set(`${v.route}_${runNum}`, v);
-                }
-            }
-            
-            // Extrakce IDSOK
-            if (v.provider === 'IDSOK' && v.route && v.attributes?.cisjrRun) {
-                idsokMatchKeys.add(`${v.route}_${v.attributes.cisjrRun}`);
-            }
+    const extractEndNumber = (value) => {
+        const match = String(value || "").match(/(\d+)$/);
+        return match ? parseInt(match[1], 10).toString() : null;
+    };
+
+    allVehicles.forEach(idsokV => {
+        if (idsokV.provider !== 'IDSOK') return;
+        const idsokRouteShort = String(idsokV.route).replace(/\D/g, '');
+        const idsokRouteFull = String(idsokV.attributes?.cisjrLine || "").replace(/\D/g, '');
+        const idsokRun = parseInt(String(idsokV.attributes?.cisjrRun).replace(/\D/g, ''), 10).toString();
+
+        const candidates = (jmkByRoute.get(idsokRouteShort) || []).concat(
+            idsokRouteFull !== idsokRouteShort ? (jmkByRoute.get(idsokRouteFull) || []) : []
+        );
+        const twin = candidates.find(jmkV => {
+            const a = jmkV.attributes;
+            return [a?.RouteID, a?.runNumber, a?.spoj, a?.kmenovySpoj, jmkV.id].map(extractEndNumber).includes(idsokRun);
         });
 
-        await new Promise(r => setTimeout(r, 15));
-        
-        // --- 2. CHYTRÉ PÁROVÁNÍ IDSOK A IDS JMK (Fuzzy Match) ---
-        const jmkVehicles = allVehicles.filter(v => v.provider === 'IDS JMK');
-        const idsokVehicles = allVehicles.filter(v => v.provider === 'IDSOK');
+        if (twin) {
+            jmkTwinsCache.set(idsokV.id, twin);
+            twin._isJmkTwin = true;
+        }
+    });
+}
 
-        idsokVehicles.forEach(idsokV => {
-            const idsokRouteShort = String(idsokV.route).replace(/\D/g, ''); 
-            const idsokRouteFull = String(idsokV.attributes?.cisjrLine || "").replace(/\D/g, ''); 
-            const idsokRun = parseInt(String(idsokV.attributes?.cisjrRun).replace(/\D/g, ''), 10).toString(); 
-            
-            const twin = jmkVehicles.find(jmkV => {
-                const jmkRoute = String(jmkV.route).replace(/\D/g, '');
-                const routeMatch = (jmkRoute === idsokRouteShort || jmkRoute === idsokRouteFull);
-                if (!routeMatch) return false;
+function renderVehicles() {
+    let allVehicles = collectVehicles();
 
-                const possibleStrings = [
-                    String(jmkV.attributes?.RouteID || ""),
-                    String(jmkV.attributes?.runNumber || ""),
-                    String(jmkV.attributes?.spoj || ""),
-                    String(jmkV.attributes?.kmenovySpoj || ""),
-                    String(jmkV.id || "")
-                ];
-                
-                const extractEndNumber = (str) => {
-                    const match = str.match(/(\d+)$/);
-                    return match ? parseInt(match[1], 10).toString() : null;
-                };
+    // --- 1. SBĚR DAT PRO KŘÍŽOVÉ FILTRY ---
+    const pidFullLines = new Set();
+    const pidFullConnections = new Set();
+    const iredoFullLines = new Set();
 
-                const possibleRuns = possibleStrings.map(extractEndNumber);
-                return possibleRuns.includes(idsokRun);
-            });
+    allVehicles.forEach(v => {
+        // PŘEKLAD KRÁTKÉ DÚK LINKY NA 6MÍSTNOU CISJR (vozidlo se vykresluje opakovaně, překládáme jen jednou)
+        if (v.provider === 'DÚK' && v.attributes && v.attributes.cisjrLine && v.attributes.cisjrRun && !v.attributes.cisjrFullLine) {
+            const cLine = String(v.attributes.cisjrLine).trim();
+            const cRun = String(v.attributes.cisjrRun).trim();
+            const translation = dukDict[`${cLine}_${cRun}`] || dukDict[`${cLine.padStart(3, '0')}_${cRun}`];
 
-            if (twin) {
-                jmkTwinsCache.set(idsokV.id, twin);
-                twin._isJmkTwin = true; 
+            if (translation) {
+                const [fullLine, fullRun] = translation.split('_');
+
+                // Původní 3místná linka žije dál, vytvoříme nový parametr FullLine
+                v.attributes.cisjrFullLine = fullLine;
+                v.attributes.cisjrRun = fullRun;
+                v.globalMatchId = `duk_${fullLine}_${fullRun}`;
             }
-        });
+        }
 
-        await new Promise(r => setTimeout(r, 15));
+        // Extrakce PID
+        if (v.provider === 'PID' && v.attributes) {
+            const pLineShort = String(v.route || v.attributes.text || "").trim();
+            if (pLineShort) {
+                pidFullLines.add(pLineShort);
+            }
 
-        // --- 3. APLIKACE FILTRŮ (Vymazání slabších zdrojů) ---
-        allVehicles = allVehicles.filter(v => {
-            if (v._isJmkTwin) return false; 
+            // 2. Extrakce šestimístné linky a čísla spoje
+            const pLineLong = v.attributes.cisjrLine;
+            const pTrip = v.attributes.cisjrTrip;
 
-            if (v.provider === 'VDV') {
-                if (v.attributes && v.attributes.text) {
-                    if (pidFullLines.has(v.attributes.text) || iredoFullLines.has(v.attributes.text)) {
-                        return false; 
-                    }
+            if (pLineLong) {
+                const cleanLine = String(pLineLong).trim();
+                
+                // ZÁCHRANA PRO VDV: Přidáme i šestimístnou linku (např. "261467") do sítě!
+                pidFullLines.add(cleanLine);
+                
+                if (pTrip) {
+                    const cleanTrip = String(pTrip).replace(/^0+/, '').trim() || "0";
+                    // TOTO SLOUŽÍ PRO SMAZÁNÍ DÚK:
+                    pidFullConnections.add(`${cleanLine}_${cleanTrip}`);
                 }
             }
-            if (v.provider === 'IREDO') {
-                const matchId = `${v.attributes.cisjrLine}_${v.attributes.cisjrRun}`;
+        }
+        
+        // Extrakce IREDO
+        if (v.provider === 'IREDO' && v.attributes && v.attributes.cisjrLine) {
+            iredoFullLines.add(v.attributes.cisjrLine);
+        }
+    });
+
+    // --- 2. CHYTRÉ PÁROVÁNÍ IDSOK A IDS JMK (Fuzzy Match) ---
+    matchJmkTwins(allVehicles);
+
+    // --- 3. APLIKACE FILTRŮ (Vymazání slabších zdrojů) ---
+    allVehicles = allVehicles.filter(v => {
+        if (v._isJmkTwin) return false; 
+
+        if (v.provider === 'VDV') {
+            if (v.attributes && v.attributes.text) {
+                if (pidFullLines.has(v.attributes.text) || iredoFullLines.has(v.attributes.text)) {
+                    return false; 
+                }
+            }
+        }
+        if (v.provider === 'IREDO') {
+            const matchId = `${v.attributes.cisjrLine}_${v.attributes.cisjrRun}`;
+            if (pidFullConnections.has(matchId)) {
+                return false;
+            }
+        }
+        // PID zničí dublující se DÚK spoj
+        if (v.provider === 'DÚK') {
+            if (v.attributes.cisjrFullLine) {
+                const dLine = String(v.attributes.cisjrFullLine).trim();
+                const dRun = String(v.attributes.cisjrRun || "").replace(/^0+/, '').trim() || "0";
+                
+                // Sestaví identifikátor např. "270430_1016"
+                const matchId = `${dLine}_${dRun}`;
+                
                 if (pidFullConnections.has(matchId)) {
-                    return false;
+                    return false; 
                 }
             }
-            // PID zničí dublující se DÚK spoj
-            if (v.provider === 'DÚK') {
-                if (v.attributes.cisjrFullLine) {
-                    const dLine = String(v.attributes.cisjrFullLine).trim();
-                    const dRun = String(v.attributes.cisjrRun || "").replace(/^0+/, '').trim() || "0";
-                    
-                    // Sestaví identifikátor např. "270430_1016"
-                    const matchId = `${dLine}_${dRun}`;
-                    
-                    if (pidFullConnections.has(matchId)) {
-                        return false; 
-                    }
-                }
-                return true;
-            }
-
-            // PID zničí dublující se IDPK linky
-            if (v.provider === 'IDPK') {
-                // V.route u IDPK je díky ořezání z minula vždy krátké číslo (např. "467")
-                const shortLine = String(v.route).trim();
-                
-                // Pokud PID vysílá linku stejného jména, IDPK autobus úplně zahodíme
-                if (pidFullLines.has(shortLine)) {
-                    return false;
-                }
-            }
-            
             return true;
-        });
+        }
 
-        await new Promise(r => setTimeout(r, 15));
+        // PID zničí dublující se IDPK linky
+        if (v.provider === 'IDPK') {
+            // V.route u IDPK je díky ořezání z minula vždy krátké číslo (např. "467")
+            const shortLine = String(v.route).trim();
+            
+            // Pokud PID vysílá linku stejného jména, IDPK autobus úplně zahodíme
+            if (pidFullLines.has(shortLine)) {
+                return false;
+            }
+        }
         
-        deduplicator.processData(allVehicles);
-        const cleanData = deduplicator.getCleanData();
+        return true;
+    });
 
-        await new Promise(r => setTimeout(r, 15));
+    deduplicator.processData(allVehicles);
+    const cleanData = deduplicator.getCleanData();
 
-        const features = cleanData
-            .filter(v => v.lat !== undefined && v.lon !== undefined && v.lat !== null && v.lon !== null)
-            .map(v => {
-                // Vytvoříme/Získáme ikonu z Canvasu s obsaženým textem
-                const iconId = getOrCreateIcon(map, v.provider, v.route, v.heading);
+    vehicleIndex.clear();
+    const usedIconIds = new Set();
+    const signatureParts = [];
+
+    const features = cleanData
+        .filter(v => v.lat !== undefined && v.lon !== undefined && v.lat !== null && v.lon !== null)
+        .map(v => {
+            const key = vehicleKey(v);
+            const iconId = getOrCreateIcon(map, v.provider, v.route, v.heading);
+            vehicleIndex.set(key, v);
+            usedIconIds.add(iconId);
+            signatureParts.push(key, v.lon, v.lat, iconId);
 
                 // --- MATEMATIKA PRO DOKONALÉ PŘEKRÝVÁNÍ (Z-INDEX) ---
                 const zIndexBase = { 
@@ -839,50 +948,42 @@ async function updateData() {
                 }[v.provider] || 0;
                 const sortKey = zIndexBase + Math.round((52 - v.lat) * 10000);
 
-                const safeProps = { 
-                    ...v, 
-                    iconId: iconId,
-                    sortKey: sortKey
-                };
-                
-                if (safeProps.attributes) safeProps.attributes = JSON.stringify(safeProps.attributes);
+            return {
+                type: 'Feature',
+                geometry: { type: 'Point', coordinates: [v.lon, v.lat] },
+                properties: { key, id: v.id, iconId, sortKey }
+            };
+        });
 
-                return { type: 'Feature', geometry: { type: 'Point', coordinates: [v.lon, v.lat] }, properties: safeProps };
-            });
-
+    // Beze změny poloh není důvod nechat mapu přepočítávat celou vrstvu
+    const signature = signatureParts.join(',');
+    if (signature !== lastFeatureSignature) {
+        lastFeatureSignature = signature;
         map.getSource('vehicles').setData({ type: 'FeatureCollection', features });
-        statusDiv.innerText = `Spojů na mapě: ${features.length}`;
+        evictUnusedIcons(usedIconIds);
+    }
+    updateStatus();
 
-        if (targetVehicleId && !initialClickDone) {
-            const targetFeature = features.find(f => {
-                const v = f.properties;
-                let matchId = v.id;
-                if (v.provider === 'GRAPP' && v.globalMatchId) matchId = v.globalMatchId.replace(/ /g, '_');
-                else if (v.text) matchId = v.text.replace(/\//g, '_').replace(/ /g, '_');
-                else if (v.route && v.runNumber) matchId = `${v.route}_${v.runNumber}`;
-                return matchId === targetVehicleId;
-            });
+    if (targetVehicleId && !initialClickDone) {
+        const target = cleanData.find(v => {
+            let matchId = v.id;
+            if (v.provider === 'GRAPP' && v.globalMatchId) matchId = v.globalMatchId.replace(/ /g, '_');
+            else if (v.text) matchId = v.text.replace(/\//g, '_').replace(/ /g, '_');
+            else if (v.route && v.runNumber) matchId = `${v.route}_${v.runNumber}`;
+            return matchId === targetVehicleId;
+        });
 
-            if (targetFeature) {
-                initialClickDone = true;
-                openVehicleDetail(targetFeature.properties);
-            }
+        if (target) {
+            initialClickDone = true;
+            openVehicleDetail(hydrateProps({ key: vehicleKey(target) }));
         }
+    }
 
-        if (activeTrainData && activeTrainData.props && detailPanel.classList.contains('open')) {
-            const currentId = activeTrainData.props.id;
-            // Najdeme aktuální čerstvá data právě otevřeného vozidla
-            const updatedFeature = features.find(f => f.properties.id === currentId);
-            
-            if (updatedFeature) {
-                // Zavoláme novou funkci pro tichý update (viz níže)
-                silentUpdateDetail(updatedFeature.properties);
-            }
-        }
-
-        if (isUserLocationActive) updateUserLocation(false); 
-
-    } catch (err) { statusDiv.innerText = "Chyba při načítání dat."; }
+    if (pendingDetailRefresh && activeTrainData.props && detailPanel.classList.contains('open')) {
+        pendingDetailRefresh = false;
+        const updated = vehicleIndex.get(vehicleKey(activeTrainData.props));
+        if (updated) silentUpdateDetail(hydrateProps({ key: vehicleKey(updated) }));
+    }
 }
 
 const locateBtn = document.getElementById('locate-btn');

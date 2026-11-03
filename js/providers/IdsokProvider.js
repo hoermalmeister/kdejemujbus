@@ -10,7 +10,7 @@ export default class IdsokProvider extends BaseProvider {
     // --- 1. STAHOVÁNÍ POZIC VOZIDEL (Přímý přístup) ---
     async fetchData() {
         try {
-            const response = await fetch('https://cestujok.cz/idspublicservices/api/service/position', {
+            const response = await this.fetchWithTimeout('https://cestujok.cz/idspublicservices/api/service/position', {
                 method: 'GET',
                 headers: {
                     'Accept': 'application/json'

@@ -13,7 +13,7 @@ export default class GrappProvider extends BaseProvider {
 
     async fetchData() {
         try {
-            const response = await fetch(this.apiUrl);
+            const response = await this.fetchWithTimeout(this.apiUrl);
             if (!response.ok) throw new Error(`GRAPP Můstek vrátil chybu: ${response.status}`);
             const responseJson = await response.json();
             if (responseJson.Token) this.currentToken = responseJson.Token;

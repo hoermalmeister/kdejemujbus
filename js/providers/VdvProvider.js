@@ -12,7 +12,7 @@ export default class VdvProvider extends BaseProvider {
 
     async fetchData() {
         try {
-            const response = await fetch(this.apiUrl);
+            const response = await this.fetchWithTimeout(this.apiUrl);
             if (!response.ok) throw new Error(`VDV API chyba: ${response.status}`);
             
             const data = await response.json();

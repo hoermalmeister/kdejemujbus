@@ -11,7 +11,7 @@ export default class IdsJmkProvider extends BaseProvider {
 
     async fetchData() {
         try {
-            const response = await fetch(this.apiUrl);
+            const response = await this.fetchWithTimeout(this.apiUrl);
             if (!response.ok) {
                 const errorText = await response.text(); 
                 throw new Error(`Můstek vrátil chybu ${response.status}: ${errorText}`);
