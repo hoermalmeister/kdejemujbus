@@ -8,7 +8,7 @@ import DukProvider from './providers/DukProvider.js';
 import VdvProvider from './providers/VdvProvider.js';
 import IdpkProvider from './providers/IdpkProvider.js';
 import MpvProvider from './providers/MpvProvider.js';
-import IdokProvider from './providers/IdokProvider.js';
+import PmdpProvider from './providers/PmdpProvider.js';
 
 // --- OCHRANA PROTI PŘIBLÍŽENÍ CELÉ STRÁNKY NA TELEFONU ---
 // Mapa si gesta řeší sama. Pokud je hlavní vlákno zaneprázdněné, Safari může gesto
@@ -41,7 +41,8 @@ const providers = [
     new MpvProvider('IDZK', 'zlin'),
     new MpvProvider('IDOL', 'idol'),
     new MpvProvider('IDESKA', 'jikord'),
-    new IdokProvider()
+    // IDOK je zatím vypnutý: dopravniportal.dpkv.cz neodpovídá z Railway ani z GitHubu
+    new PmdpProvider()
 ];
 
 const statusDiv = document.getElementById('status');
@@ -89,6 +90,7 @@ function getProviderColor(provider) {
     if (provider === 'IDOL') return '#2c89c8';
     if (provider === 'IDESKA') return '#008033';
     if (provider === 'IDOK') return '#8c4a9a';
+    if (provider === 'PMDP') return '#ff8080';
     return '#ff8080'; 
 }
 
@@ -972,6 +974,7 @@ function renderVehicles() {
                     'ODIS': 2500,
                     'IDESKA': 2400,
                     'IDOK': 2300,
+                    'PMDP': 2200,
                     'IDPK': 2000,
                     'VDV': 1000 
                 }[v.provider] || 0;

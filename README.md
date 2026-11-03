@@ -12,10 +12,10 @@
 | IDZK | ✅ | ✅ | ✅ | ✅ | ✅ |
 | ODIS | ✅ | ✅ | ✅ | ✅ | ✅ |
 | IDESKA | ✅ | ✅ | ✅ | ✅ | ✅ |
-| IDOK | ✅ | ✅ | ✅ | [ ] | ✅ |
+| IDOK | [ ] | [ ] | [ ] | [ ] | [ ] |
 | IDPK | ✅ | ✅ | ✅ | ✅ | ✅ |
 | VDV | ✅ | ✅ | ✅ | ✅ | ✅ |
-| PMDP | [ ] | [ ] | [ ] | [ ] | [ ] |
+| PMDP | ✅ | ✅ | ✅ | ✅ | ✅ |
 | DPMML | [ ] | [ ] | [ ] | [ ] | [ ] |
 | DPMD | [ ] | [ ] | [ ] | [ ] | [ ] |
 | DPMP | [ ] | [ ] | [ ] | [ ] | [ ] |
@@ -39,6 +39,7 @@ https://mpvnet.cz/odis/map
 https://mpvnet.cz/jikord/map  
 https://pvvd.idpk.cz/  
 https://dopravniportal.dpkv.cz/dic/  
+https://jizdnirady.pmdp.cz/provoz  
 https://mapavdv.kr-vysocina.cz/  
 https://jizdnirady.pmdp.cz/provoz  
 https://mapy.mesto-most.cz/app/mhd/  
