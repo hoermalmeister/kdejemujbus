@@ -831,6 +831,7 @@ function renderVehicles() {
     const pidFullLines = new Set();
     const pidFullConnections = new Set();
     const iredoFullLines = new Set();
+    const ideskaFullLines = new Set();
 
     allVehicles.forEach(v => {
         // PŘEKLAD KRÁTKÉ DÚK LINKY NA 6MÍSTNOU CISJR (vozidlo se vykresluje opakovaně, překládáme jen jednou)
@@ -874,6 +875,11 @@ function renderVehicles() {
             }
         }
         
+        // Extrakce IDESKA: IDPK a VDV čísla spoje hned nemají, proto porovnáváme jen šestimístnou linku
+        if (v.provider === 'IDESKA' && /^\d{6}$/.test(v.attributes?.line || '')) {
+            ideskaFullLines.add(v.attributes.line);
+        }
+
         // Extrakce IREDO
         if (v.provider === 'IREDO' && v.attributes && v.attributes.cisjrLine) {
             iredoFullLines.add(v.attributes.cisjrLine);
@@ -886,6 +892,10 @@ function renderVehicles() {
     // --- 3. APLIKACE FILTRŮ (Vymazání slabších zdrojů) ---
     allVehicles = allVehicles.filter(v => {
         if (v._isJmkTwin) return false; 
+
+        // IDESKA zničí stejnou šestimístnou linku v IDPK a VDV
+        if (v.provider === 'VDV' && ideskaFullLines.has(String(v.attributes?.text || '').trim())) return false;
+        if (v.provider === 'IDPK' && ideskaFullLines.has(String(v.attributes?.fullLine || '').trim())) return false;
 
         if (v.provider === 'VDV') {
             if (v.attributes && v.attributes.text) {

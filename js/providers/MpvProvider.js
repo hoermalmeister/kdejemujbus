@@ -54,6 +54,10 @@ export default class MpvProvider extends BaseProvider {
             if (!line || !run || !item.x || !item.y) continue;
             if (item.external && ownTrips.has(`${line}_${run}`)) continue;
 
+            // Na mapě ukazujeme jen poslední tři číslice šestimístné linky
+            const rawShortLine = fields[CN.shortLine] || line;
+            const shortLine = /^\d{6}$/.test(rawShortLine) ? rawShortLine.slice(-3) : rawShortLine;
+
             // "a_270.png" je azimut, "a_stoji.png" stojící vozidlo
             const angle = /^a_(\d+)\./.exec(item.ico || '');
             // Šestimístné linky jsou celostátní, linky MHD se mezi městy opakují
@@ -65,7 +69,7 @@ export default class MpvProvider extends BaseProvider {
                 lat: item.x,
                 lon: item.y,
                 heading: angle ? Number(angle[1]) : null,
-                route: fields[CN.shortLine] || line,
+                route: shortLine,
                 headsign: fields[CN.destination] || 'Neznámý cíl',
                 globalMatchId: matchId,
                 delay: `${item.dm || 0} min`,
@@ -76,7 +80,7 @@ export default class MpvProvider extends BaseProvider {
                     delayMinutes: item.dm || 0,
                     line,
                     run,
-                    shortLine: fields[CN.shortLine] || line,
+                    shortLine,
                     lastStop: fields[CN.lastStop] || '',
                     destination: fields[CN.destination] || 'Neznámý cíl'
                 }
