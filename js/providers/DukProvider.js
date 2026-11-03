@@ -239,7 +239,7 @@ export default class DukProvider extends BaseProvider {
 // --- TRASA DÚK: nejdřív stopa vozidla ze zdroje, Dukfinder zůstává jako záloha ---
     async getRouteInfo(globalId, attributes, details) {
         const traced = await this.getTraceRoute(attributes);
-        if (traced && traced.length >= 2) return traced;
+        if (traced) return traced;
         return this.getDukfinderRoute(attributes);
     }
 
@@ -250,7 +250,9 @@ export default class DukProvider extends BaseProvider {
             const response = await fetch(`${this.detailUrl.replace('/detail', '/trace')}?id=${attributes.ID}`);
             if (!response.ok) return null;
             const data = await response.json();
-            return buildDukRoute(data.ItemL);
+            const lines = buildDukRoute(data.ItemL);
+            if (lines.length === 0 || lines[0].length < 2) return null;
+            return lines.length === 1 ? lines[0] : lines;
         } catch (error) {
             console.warn("Stopu vozidla DÚK se nepodařilo stáhnout.", error);
             return null;

@@ -3,10 +3,14 @@
 //  - s časem "11:40:00": plán před vozidlem. Modré body (#87CEFA) jsou zastávky, šedé tvar mezi nimi.
 //    Podle ID jdou úseky správně za sebou, ale uvnitř úseku jsou šedé body zpřeházené
 //    a každý úsek se vrací na výchozí zastávku.
+// ID stopy navazují hned za ID plánu, takže stopa obsahuje jen aktuální spoj.
 
 const STOP_COLOR = '#87cefa';
 const SPIKE_LEG_M = 400;
+const DRIVEN_SPIKE_LEG_M = 150;
 const START_TOLERANCE_M = 50;
+const CHAIN_GAP_M = 600;
+const MIN_BRANCH_POINTS = 3;
 
 function distanceM(a, b) {
     const dLat = (a.Lat - b.Lat) * 111320;
@@ -33,13 +37,50 @@ function isStop(point) {
     return String(point.CSSBgClr).toLowerCase() === STOP_COLOR;
 }
 
+// Uvnitř úseku může být hlavní trasa i závlek na zavolání a jejich časy se prolínají.
+// Body proto podle času přidáváme k řetězci, na který navazují nejlépe.
+function splitIntoChains(run, previousStop) {
+    const chains = previousStop ? [[previousStop]] : [];
+    for (const point of sortByTime(run)) {
+        let best = null;
+        let bestScore = Infinity;
+        for (const chain of chains) {
+            const distance = distanceM(chain[chain.length - 1], point);
+            if (distance > CHAIN_GAP_M) continue;
+            const hasNeighbourId = chain.some(p => Math.abs(p.ID - point.ID) === 1);
+            const score = hasNeighbourId ? distance * 0.3 : distance;
+            if (score < bestScore) {
+                bestScore = score;
+                best = chain;
+            }
+        }
+        if (best) best.push(point);
+        else chains.push([point]);
+    }
+    return chains;
+}
+
 function orderPlan(planPoints) {
-    const ordered = [];
+    const main = [];
+    const branches = [];
     const seenStops = new Set();
     let run = [];
-    const flushRun = () => {
-        if (run.length > 0) ordered.push(...sortByTime(run));
+
+    const flushRun = (nextStop) => {
+        if (run.length === 0) return;
+        const previousStop = main[main.length - 1];
+        const chains = splitIntoChains(run, previousStop);
         run = [];
+
+        const target = nextStop || chains[chains.length - 1][chains[chains.length - 1].length - 1];
+        const mainChain = chains.reduce((best, chain) =>
+            distanceM(chain[chain.length - 1], target) < distanceM(best[best.length - 1], target) ? chain : best);
+
+        main.push(...mainChain.filter(point => point !== previousStop));
+        chains.filter(chain => chain !== mainChain).forEach(chain => {
+            const points = chain.filter(point => point !== previousStop);
+            if (points.length >= MIN_BRANCH_POINTS) branches.push(points);
+        });
     };
 
     for (const point of [...planPoints].sort((a, b) => a.ID - b.ID)) {
@@ -47,47 +88,79 @@ function orderPlan(planPoints) {
             run.push(point);
             continue;
         }
-        flushRun();
         const key = `${point.Lat},${point.Lng}`;
-        if (!seenStops.has(key)) {
+        const isNewStop = !seenStops.has(key);
+        flushRun(point);
+        if (isNewStop) {
             seenStops.add(key);
-            ordered.push(point);
+            main.push(point);
         }
     }
-    flushRun();
-    return ordered;
+    flushRun(null);
+    return { main, branches };
 }
 
-// Odhadnuté časy občas posunou šedý bod mimo pořadí, což by na mapě udělalo zub
-function removeSpikes(points) {
+// Odhadnuté časy občas posunou bod mimo pořadí, což by na mapě udělalo zub
+function removeSpikes(points, maxLegM) {
     return points.filter((point, i) => {
         if (i === 0 || i === points.length - 1 || isStop(point)) return true;
         const toPrev = distanceM(points[i - 1], point);
         const toNext = distanceM(point, points[i + 1]);
-        if (toPrev > SPIKE_LEG_M || toNext > SPIKE_LEG_M) return true;
+        if (toPrev > maxLegM || toNext > maxLegM) return true;
         return distanceM(points[i - 1], points[i + 1]) >= 0.6 * (toPrev + toNext);
     });
 }
 
-function remainingPlan(plan, lastDriven) {
-    if (!lastDriven || plan.length === 0) return plan;
-    const distances = plan.map(point => distanceM(lastDriven, point));
-    const nearest = Math.min(...distances);
-    // Při průjezdu stejným místem dvakrát bereme pozdější výskyt
-    let start = 0;
-    distances.forEach((distance, i) => {
-        if (distance <= nearest + START_TOLERANCE_M) start = i;
+function nearestIndex(points, target) {
+    let index = -1;
+    let nearest = Infinity;
+    points.forEach((point, i) => {
+        const distance = distanceM(point, target);
+        if (distance < nearest) {
+            nearest = distance;
+            index = i;
+        }
     });
-    return plan.slice(start);
+    return { index, distance: nearest };
 }
 
+function remainingStart(plan, lastDriven) {
+    if (!lastDriven || plan.length === 0) return 0;
+    const nearest = nearestIndex(plan, lastDriven).distance;
+    // Při průjezdu stejným místem dvakrát bereme pozdější výskyt
+    let start = 0;
+    plan.forEach((point, i) => {
+        if (distanceM(lastDriven, point) <= nearest + START_TOLERANCE_M) start = i;
+    });
+    return start;
+}
+
+// Závlek ukážeme, jen když navazuje na část trasy před vozidlem. Neobsloužený závlek za vozidlem zmizí.
+function attachBranch(branch, ahead) {
+    const head = nearestIndex(ahead, branch[0]);
+    if (head.index < 0 || head.distance > CHAIN_GAP_M) return null;
+    const tail = nearestIndex(ahead, branch[branch.length - 1]);
+    const line = [ahead[head.index], ...removeSpikes(branch, SPIKE_LEG_M)];
+    if (tail.distance <= CHAIN_GAP_M) line.push(ahead[tail.index]);
+    return line;
+}
+
+// Vrací seznam čar: první je hlavní trasa, další jsou závleky, které vozidlo teprve může obsloužit.
 export function buildDukRoute(markers) {
     if (!Array.isArray(markers)) return [];
     const valid = markers.filter(m => m && Number.isFinite(m.Lat) && Number.isFinite(m.Lng) && m.Lat !== 0 && m.Lng !== 0);
     const isDriven = (m) => String(m.Text).trim().startsWith('T');
 
-    const driven = valid.filter(isDriven).sort((a, b) => a.ID - b.ID);
-    const plan = removeSpikes(orderPlan(valid.filter(m => !isDriven(m))));
+    const driven = removeSpikes(valid.filter(isDriven).sort((a, b) => a.ID - b.ID), DRIVEN_SPIKE_LEG_M);
+    const { main, branches } = orderPlan(valid.filter(m => !isDriven(m)));
+    const plan = removeSpikes(main, SPIKE_LEG_M);
+    const ahead = plan.slice(remainingStart(plan, driven[driven.length - 1]));
 
-    return [...driven, ...remainingPlan(plan, driven[driven.length - 1])].map(p => [p.Lng, p.Lat]);
+    const toCoordinates = (points) => points.map(p => [p.Lng, p.Lat]);
+    const lines = [toCoordinates([...driven, ...ahead])];
+    branches.forEach(branch => {
+        const line = attachBranch(branch, ahead);
+        if (line) lines.push(toCoordinates(line));
+    });
+    return lines[0].length > 0 ? lines : [];
 }

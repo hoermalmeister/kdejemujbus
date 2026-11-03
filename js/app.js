@@ -306,7 +306,9 @@ async function openVehicleDetail(props) {
         }
         
         if (routeCoordinates && routeCoordinates.length > 0) {
-            map.getSource('selected-route').setData({ type: 'Feature', geometry: { type: 'LineString', coordinates: routeCoordinates } });
+            // Trasa může mít kromě hlavní čáry i odbočky (závleky)
+            const isMultiLine = Array.isArray(routeCoordinates[0][0]);
+            map.getSource('selected-route').setData({ type: 'Feature', geometry: { type: isMultiLine ? 'MultiLineString' : 'LineString', coordinates: routeCoordinates } });
         }
 
         if (details) {
