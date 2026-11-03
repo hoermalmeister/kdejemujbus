@@ -8,6 +8,7 @@ import DukProvider from './providers/DukProvider.js';
 import VdvProvider from './providers/VdvProvider.js';
 import IdpkProvider from './providers/IdpkProvider.js';
 import MpvProvider from './providers/MpvProvider.js';
+import IdokProvider from './providers/IdokProvider.js';
 
 // --- OCHRANA PROTI PŘIBLÍŽENÍ CELÉ STRÁNKY NA TELEFONU ---
 // Mapa si gesta řeší sama. Pokud je hlavní vlákno zaneprázdněné, Safari může gesto
@@ -39,7 +40,8 @@ const providers = [
     new MpvProvider('ODIS', 'odis'),
     new MpvProvider('IDZK', 'zlin'),
     new MpvProvider('IDOL', 'idol'),
-    new MpvProvider('IDESKA', 'jikord')
+    new MpvProvider('IDESKA', 'jikord'),
+    new IdokProvider()
 ];
 
 const statusDiv = document.getElementById('status');
@@ -86,6 +88,7 @@ function getProviderColor(provider) {
     if (provider === 'IDZK') return '#f31d7f';
     if (provider === 'IDOL') return '#2c89c8';
     if (provider === 'IDESKA') return '#008033';
+    if (provider === 'IDOK') return '#8c4a9a';
     return '#ff8080'; 
 }
 
@@ -968,6 +971,7 @@ function renderVehicles() {
                     'IDZK': 2600,
                     'ODIS': 2500,
                     'IDESKA': 2400,
+                    'IDOK': 2300,
                     'IDPK': 2000,
                     'VDV': 1000 
                 }[v.provider] || 0;

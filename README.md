@@ -12,6 +12,7 @@
 | IDZK | ✅ | ✅ | ✅ | ✅ | ✅ |
 | ODIS | ✅ | ✅ | ✅ | ✅ | ✅ |
 | IDESKA | ✅ | ✅ | ✅ | ✅ | ✅ |
+| IDOK | ✅ | ✅ | ✅ | [ ] | ✅ |
 | IDPK | ✅ | ✅ | ✅ | ✅ | ✅ |
 | VDV | ✅ | ✅ | ✅ | ✅ | ✅ |
 | PMDP | [ ] | [ ] | [ ] | [ ] | [ ] |
@@ -37,6 +38,7 @@ https://mpvnet.cz/zlin/map
 https://mpvnet.cz/odis/map  
 https://mpvnet.cz/jikord/map  
 https://pvvd.idpk.cz/  
+https://dopravniportal.dpkv.cz/dic/  
 https://mapavdv.kr-vysocina.cz/  
 https://jizdnirady.pmdp.cz/provoz  
 https://mapy.mesto-most.cz/app/mhd/  

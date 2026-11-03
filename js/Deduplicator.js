@@ -1,6 +1,6 @@
 const PROVIDER_PRIORITY = [
     'GRAPP', 'PID', 'DÚK', 'IDOL', 'IREDO', 'IDS JMK', 'IDSOK', 'IDZK', 
-    'ODIS', 'IDESKA', 'IDPK', 'VDV', 'PMDP', 'DPMML', 'DPMD', 'DPMP', 'DPMHK', 
+    'ODIS', 'IDESKA', 'IDOK', 'IDPK', 'VDV', 'PMDP', 'DPMML', 'DPMD', 'DPMP', 'DPMHK', 
     'DPKV', 'DPMJ', 'TSHB', 'DPMLB'
 ];
 
