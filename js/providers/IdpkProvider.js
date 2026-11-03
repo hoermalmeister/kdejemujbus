@@ -1,4 +1,5 @@
 import BaseProvider from './BaseProvider.js';
+import { getGtfsRoute } from './gtfsRoutes.js';
 
 export default class IdpkProvider extends BaseProvider {
     constructor() {
@@ -176,6 +177,10 @@ export default class IdpkProvider extends BaseProvider {
             console.error("Chyba detailu IDPK:", error);
             return null;
         }
+    }
+
+    async getRouteInfo(id, attributes, details) {
+        return getGtfsRoute(details?.timetableRoute);
     }
 
     async getTimetable(id, attributes, details) {

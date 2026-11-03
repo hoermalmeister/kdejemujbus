@@ -1,4 +1,5 @@
 import BaseProvider from './BaseProvider.js';
+import { getGtfsRoute } from './gtfsRoutes.js';
 
 export default class VdvProvider extends BaseProvider {
     constructor() {
@@ -129,6 +130,10 @@ export default class VdvProvider extends BaseProvider {
             isNAD: false,
             isAtDestination // Předáváme instrukci pro app.js
         };
+    }
+
+    async getRouteInfo(id, attributes, details) {
+        return getGtfsRoute(details?.timetableRoute);
     }
 
     async getTimetable(globalId, attributes) {
