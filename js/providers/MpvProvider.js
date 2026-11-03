@@ -39,11 +39,20 @@ export default class MpvProvider extends BaseProvider {
 
     normalize(rawData) {
         const vehicles = [];
+        // Vůz jiného IDS může být zároveň mezi vlastními vozy portálu, jen s krátkým číslem linky
+        const ownTrips = new Set();
+        for (const item of rawData) {
+            if (item.external) continue;
+            const fields = String(item.cn || '').split('|');
+            ownTrips.add(`${fields[CN.shortLine]}_${fields[CN.run]}`);
+        }
+
         for (const item of rawData) {
             const fields = String(item.cn || '').split('|');
             const line = fields[CN.line];
             const run = fields[CN.run];
             if (!line || !run || !item.x || !item.y) continue;
+            if (item.external && ownTrips.has(`${line}_${run}`)) continue;
 
             // "a_270.png" je azimut, "a_stoji.png" stojící vozidlo
             const angle = /^a_(\d+)\./.exec(item.ico || '');
@@ -62,7 +71,8 @@ export default class MpvProvider extends BaseProvider {
                 delay: `${item.dm || 0} min`,
                 attributes: {
                     cat: item.cat,
-                    carrier: item.cr,
+                    carrier: String(item.cr || '').replace(/<[^>]*>/g, '').trim(),
+                    isExternal: Boolean(item.external),
                     delayMinutes: item.dm || 0,
                     line,
                     run,
@@ -98,7 +108,7 @@ export default class MpvProvider extends BaseProvider {
     }
 
     async getRouteInfo(id, attributes) {
-        if (!attributes) return null;
+        if (!attributes || attributes.isExternal) return null;
         try {
             const response = await fetch(`${this.apiUrl}/route?${this.tripQuery(attributes)}`);
             if (!response.ok) return null;
@@ -111,7 +121,7 @@ export default class MpvProvider extends BaseProvider {
     }
 
     async getTimetable(id, attributes) {
-        if (!attributes) return [];
+        if (!attributes || attributes.isExternal) return [];
         try {
             const response = await fetch(`${this.apiUrl}/timetable?${this.tripQuery(attributes)}`);
             if (!response.ok) return [];
