@@ -7,6 +7,7 @@ import IdsokProvider from './providers/IdsokProvider.js';
 import DukProvider from './providers/DukProvider.js';
 import VdvProvider from './providers/VdvProvider.js';
 import IdpkProvider from './providers/IdpkProvider.js';
+import MpvProvider from './providers/MpvProvider.js';
 
 // --- OCHRANA PROTI PŘIBLÍŽENÍ CELÉ STRÁNKY NA TELEFONU ---
 // Mapa si gesta řeší sama. Pokud je hlavní vlákno zaneprázdněné, Safari může gesto
@@ -34,7 +35,11 @@ const providers = [
     new IdsokProvider(),
     new DukProvider(),
     new VdvProvider(),
-    new IdpkProvider()
+    new IdpkProvider(),
+    new MpvProvider('ODIS', 'odis'),
+    new MpvProvider('IDZK', 'zlin'),
+    new MpvProvider('IDOL', 'idol'),
+    new MpvProvider('IDESKA', 'jikord')
 ];
 
 const statusDiv = document.getElementById('status');
@@ -77,6 +82,10 @@ function getProviderColor(provider) {
     if (provider === 'DÚK') return '#a05a2c';
     if (provider === 'VDV') return '#0000ff';
     if (provider === 'IDPK') return '#00ccff';
+    if (provider === 'ODIS') return '#ffcb31';
+    if (provider === 'IDZK') return '#f31d7f';
+    if (provider === 'IDOL') return '#2c89c8';
+    if (provider === 'IDESKA') return '#008033';
     return '#ff8080'; 
 }
 
@@ -945,6 +954,10 @@ function renderVehicles() {
                     'IREDO': 3000,
                     'IDSOK': 2900,
                     'DÚK': 2800,
+                    'IDOL': 2700,
+                    'IDZK': 2600,
+                    'ODIS': 2500,
+                    'IDESKA': 2400,
                     'IDPK': 2000,
                     'VDV': 1000 
                 }[v.provider] || 0;

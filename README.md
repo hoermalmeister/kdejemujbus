@@ -5,13 +5,13 @@
 | GRAPP | ✅ | ✅ | ✅ | ✅ | ✅ |
 | PID | ✅ | ✅ | ✅ | ✅ | ✅ |
 | DÚK | ✅ | ✅ | ✅ | ✅ | ✅ |
-| IDOL | [ ] | [ ] | [ ] | [ ] | [ ] |
+| IDOL | ✅ | ✅ | ✅ | ✅ | ✅ |
 | IREDO | ✅ | ✅ | ✅ | ✅ | ✅ |
 | IDS JMK | ✅ | ✅ | ✅ | ✅ | ✅ |
 | IDSOK | ✅ | ✅ | ✅ | ✅ | ✅ |
-| IDZK | [ ] | [ ] | [ ] | [ ] | [ ] |
-| ODIS | [ ] | [ ] | [ ] | [ ] | [ ] |
-| IDESKA | [ ] | [ ] | [ ] | [ ] | [ ] |
+| IDZK | ✅ | ✅ | ✅ | ✅ | ✅ |
+| ODIS | ✅ | ✅ | ✅ | ✅ | ✅ |
+| IDESKA | ✅ | ✅ | ✅ | ✅ | ✅ |
 | IDPK | ✅ | ✅ | ✅ | ✅ | ✅ |
 | VDV | ✅ | ✅ | ✅ | ✅ | ✅ |
 | PMDP | [ ] | [ ] | [ ] | [ ] | [ ] |
@@ -29,13 +29,13 @@
 https://grapp.spravazeleznic.cz/  
 https://mapa.pid.cz/  
 https://provoz.kr-ustecky.cz/TMD  
-https://www.mpvnet.cz/idol/map  
+https://mpvnet.cz/idol/map  
 https://iredo.online/  
 https://mapa.idsjmk.cz/  
 https://cestujok.cz/idspublic/  
-https://www.mpvnet.cz/zlin/map  
-https://www.mpvnet.cz/odis/map  
-https://www.mpvnet.cz/jikord/map  
+https://mpvnet.cz/zlin/map  
+https://mpvnet.cz/odis/map  
+https://mpvnet.cz/jikord/map  
 https://pvvd.idpk.cz/  
 https://mapavdv.kr-vysocina.cz/  
 https://jizdnirady.pmdp.cz/provoz  
