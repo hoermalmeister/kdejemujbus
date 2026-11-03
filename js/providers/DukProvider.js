@@ -1,4 +1,5 @@
 import BaseProvider from './BaseProvider.js';
+import { buildDukRoute } from './dukTrace.js';
 
 export default class DukProvider extends BaseProvider {
     constructor() {
@@ -235,8 +236,28 @@ export default class DukProvider extends BaseProvider {
         return stops;
     }
 
-// --- STAHOVÁNÍ TRASY DÚK PŘES VLASTNÍ MŮSTEK ---
+// --- TRASA DÚK: nejdřív stopa vozidla ze zdroje, Dukfinder zůstává jako záloha ---
     async getRouteInfo(globalId, attributes, details) {
+        const traced = await this.getTraceRoute(attributes);
+        if (traced && traced.length >= 2) return traced;
+        return this.getDukfinderRoute(attributes);
+    }
+
+    async getTraceRoute(attributes) {
+        if (!attributes || !attributes.ID) return null;
+
+        try {
+            const response = await fetch(`${this.detailUrl.replace('/detail', '/trace')}?id=${attributes.ID}`);
+            if (!response.ok) return null;
+            const data = await response.json();
+            return buildDukRoute(data.ItemL);
+        } catch (error) {
+            console.warn("Stopu vozidla DÚK se nepodařilo stáhnout.", error);
+            return null;
+        }
+    }
+
+    async getDukfinderRoute(attributes) {
         if (!attributes || !attributes.cisjrRun) return null;
 
         // OPRAVA: Dukfinder API vyžaduje striktně "line_displayed" (krátké číslo z autobusu)
