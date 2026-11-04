@@ -1,6 +1,8 @@
 import BaseProvider from './BaseProvider.js';
+import { getGtfsRoute } from './gtfsRoutes.js';
 
 const BRIDGE_URL = 'https://grapp-bridge-production.up.railway.app/dpmlb';
+const TIMETABLES_URL = 'https://hoermalmeister.github.io/kdejemujbus-bridge/timetables';
 
 function delayColor(minutes) {
     if (minutes > 15) return '#e74c3c';
@@ -9,10 +11,17 @@ function delayColor(minutes) {
     return '#58d68d';
 }
 
+function addMinutes(time, minutes) {
+    const [hours, mins] = time.split(':').map(Number);
+    const total = (hours * 60 + mins + minutes + 24 * 60) % (24 * 60);
+    return `${String(Math.floor(total / 60)).padStart(2, '0')}:${String(total % 60).padStart(2, '0')}`;
+}
+
 export default class DpmlbProvider extends BaseProvider {
     constructor() {
         super();
         this.providerName = 'DPMLB';
+        this.timetableCache = new Map();
     }
 
     async fetchData() {
@@ -44,15 +53,43 @@ export default class DpmlbProvider extends BaseProvider {
             }));
     }
 
+    // Spoj dopočítal bridge; jízdní řád i trasa jsou pak z GTFS
+    linkospoj(attributes) {
+        return attributes.run != null ? `${attributes.fullLine}/${attributes.run}` : null;
+    }
+
+    getTimetableData(attributes) {
+        const key = this.linkospoj(attributes);
+        if (!key) return Promise.resolve(null);
+        if (!this.timetableCache.has(key)) {
+            const request = fetch(`${TIMETABLES_URL}/${attributes.fullLine}_${attributes.run}.json`)
+                .then(response => (response.ok ? response.json() : null))
+                .catch(() => null)
+                .then(data => {
+                    if (!data) this.timetableCache.delete(key);
+                    return data;
+                });
+            this.timetableCache.set(key, request);
+            if (this.timetableCache.size > 40) this.timetableCache.delete(this.timetableCache.keys().next().value);
+        }
+        return this.timetableCache.get(key);
+    }
+
     async getDetails(globalId, attributes) {
         if (!attributes) return null;
+        const delay = attributes.delay || 0;
+        let stop = 'Na trase...';
+        if (attributes.run != null) {
+            const timetable = await this.getTimetableData(attributes);
+            stop = timetable?.[attributes.stopIndex]?.name || stop;
+        }
         return {
-            route: attributes.route || attributes.line,
-            timetableRoute: attributes.fullLine || attributes.line,
+            route: attributes.run != null ? `${attributes.line}/${attributes.run}` : attributes.line,
+            timetableRoute: this.linkospoj(attributes) || attributes.line,
             destination: attributes.destination || 'Neznámý cíl',
-            stop: 'Na trase...',
-            delay: `${attributes.delay || 0} min`,
-            delayColor: delayColor(attributes.delay || 0),
+            stop,
+            delay: `${delay} min`,
+            delayColor: delayColor(delay),
             carrier: 'DPMLB',
             isNAD: false,
             isOdklon: false,
@@ -61,7 +98,36 @@ export default class DpmlbProvider extends BaseProvider {
         };
     }
 
-    // Zdroj neposílá seznam zastávek ani tvar trasy
-    async getTimetable() { return []; }
-    getRouteInfo() { return null; }
+    async getRouteInfo(id, attributes) {
+        const key = this.linkospoj(attributes);
+        return key ? getGtfsRoute(key) : null;
+    }
+
+    async getTimetable(id, attributes) {
+        if (!attributes || attributes.run == null) return [];
+        const timetable = await this.getTimetableData(attributes);
+        if (!timetable) return [];
+
+        const delay = attributes.delay || 0;
+        const current = attributes.stopIndex || 0;
+        const block = (time, index) => {
+            if (!time) return null;
+            const passed = index < current;
+            return {
+                planned: time,
+                actual: passed ? time : addMinutes(time, delay),
+                color: passed ? '#58d68d' : delayColor(delay)
+            };
+        };
+        return timetable.map((stop, index) => {
+            const isLast = index === timetable.length - 1;
+            return {
+                station: stop.name,
+                arr: isLast ? block(stop.arr, index) : null,
+                dep: isLast ? null : block(stop.dep, index),
+                isPassing: false,
+                isNAD: false
+            };
+        });
+    }
 }
