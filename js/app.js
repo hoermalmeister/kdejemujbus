@@ -47,8 +47,9 @@ const providers = [
     // IDOK je zatím vypnutý: dopravniportal.dpkv.cz neodpovídá z Railway ani z GitHubu
     new PmdpProvider(),
     new TshbProvider(),
-    new DpmdProvider(),
-    new DpmpProvider()
+    new DpmdProvider()
+    // DPMP je zatím vypnutý: jeho API je uzavřené časově omezenou hlavičkou (viz bridge)
+    // new DpmpProvider()
 ];
 
 const statusDiv = document.getElementById('status');
