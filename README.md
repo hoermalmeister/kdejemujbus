@@ -23,7 +23,7 @@
 | DPKV | [ ] | [ ] | [ ] | [ ] | [ ] |
 | DPMJ | [ ] | [ ] | [ ] | [ ] | [ ] |
 | TSHB | ✅ | ✅ | ✅ | ✅ | ✅ |
-| DPMLB | ✅ | ✅ | ✅ | — | — |
+| DPMLB | ✅ | ✅ | ✅ | 🟡 | 🟡 |
 | Kladno | [ ] | [ ] | [ ] | [ ] | [ ] |
 
 ## Zdroje aktuálních poloh
