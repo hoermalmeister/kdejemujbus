@@ -49,7 +49,7 @@ export default class PortaboProvider extends BaseProvider {
                 lon: item.lng,
                 heading: item.heading,
                 route: String(item.line),
-                headsign: 'Neznámý cíl',
+                headsign: item.destination || 'Neznámý cíl',
                 // Šestimístná linka + spoj, ať se vozy případně nepárují dvakrát
                 globalMatchId: item.spoj ? `${item.cis}_${item.spoj}` : `${this.endpoint}_${item.vehicle}`,
                 delay: `${item.delay || 0} min`,
@@ -81,16 +81,11 @@ export default class PortaboProvider extends BaseProvider {
     async getDetails(globalId, attributes) {
         if (!attributes) return null;
         const delay = attributes.delay || 0;
-        let destination = 'Neznámý cíl';
-        if (this.useGtfs) {
-            const timetable = await this.getTimetableData(attributes);
-            destination = timetable?.[timetable.length - 1]?.name || destination;
-        }
         return {
             route: attributes.spoj ? `${attributes.line}/${attributes.spoj}` : String(attributes.line),
             timetableRoute: attributes.spoj ? `${attributes.cis}/${attributes.spoj}` : String(attributes.line),
-            destination,
-            stop: 'Na trase...',
+            destination: attributes.destination || 'Neznámý cíl',
+            stop: attributes.stop || 'Na trase...',
             delay: `${delay} min`,
             delayColor: delayColor(delay),
             carrier: this.providerName,

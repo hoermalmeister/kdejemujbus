@@ -57,7 +57,7 @@ const providers = [
     new TsmkProvider(),
     new DszoProvider(),
     new PortaboProvider('DPMÚL', 'dpmul', true),
-    new PortaboProvider('MDT', 'mdt', false)
+    new PortaboProvider('MDT', 'mdt', true)
 ];
 
 const statusDiv = document.getElementById('status');
