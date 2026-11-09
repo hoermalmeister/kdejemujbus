@@ -15,6 +15,7 @@ import DpmpProvider from './providers/DpmpProvider.js';
 import DpmlbProvider from './providers/DpmlbProvider.js';
 import TsmkProvider from './providers/TsmkProvider.js';
 import DszoProvider from './providers/DszoProvider.js';
+import PortaboProvider from './providers/PortaboProvider.js';
 
 // --- OCHRANA PROTI PŘIBLÍŽENÍ CELÉ STRÁNKY NA TELEFONU ---
 // Mapa si gesta řeší sama. Pokud je hlavní vlákno zaneprázdněné, Safari může gesto
@@ -54,7 +55,9 @@ const providers = [
     new DpmpProvider(),
     new DpmlbProvider(),
     new TsmkProvider(),
-    new DszoProvider()
+    new DszoProvider(),
+    new PortaboProvider('DPMÚL', 'dpmul', true),
+    new PortaboProvider('MDT', 'mdt', false)
 ];
 
 const statusDiv = document.getElementById('status');
@@ -109,6 +112,8 @@ function getProviderColor(provider) {
     if (provider === 'DPMLB') return '#ff8080';
     if (provider === 'TSMK') return '#ff8080';
     if (provider === 'DSZO') return '#ff8080';
+    if (provider === 'DPMÚL') return '#ff8080';
+    if (provider === 'MDT') return '#ff8080';
     return '#ff8080'; 
 }
 
@@ -999,6 +1004,8 @@ function renderVehicles() {
                     'DPMLB': 2030,
                     'TSMK': 2020,
                     'DSZO': 2010,
+                    'DPMÚL': 2000,
+                    'MDT': 1990,
                     'IDPK': 2000,
                     'VDV': 1000 
                 }[v.provider] || 0;
