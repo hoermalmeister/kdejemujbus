@@ -16,7 +16,6 @@
 | IDPK | ✅ | ✅ | ✅ | ✅ | ✅ |
 | VDV | ✅ | ✅ | ✅ | ✅ | ✅ |
 | PMDP | ✅ | ✅ | ✅ | ✅ | ✅ |
-| DPMUL | [ ] | [ ] | [ ] | [ ] | [ ] |
 | DPMD | ✅ | ✅ | ✅ | ✅ | ✅ |
 | DPMP | ✅ | ✅ | ✅ | ✅ | ✅ |
 | DPMHK | [ ] | [ ] | [ ] | [ ] | [ ] |
@@ -62,13 +61,11 @@ https://www.arriva.cz/cs/dopravni-info/aktualni-poloha-autobusu-online?mainType=
   
 ## Chybějící zdroje
 IDOK    
-Ústí nad Labem  
 Třebíč  
 Ústí nad Orlicí  
 Špindlerův Mlýn  
 Jičín  
-Tachov  
-Železná Ruda  
+Tachov   
 Žatec  
 Louny  
 Lovosice  
