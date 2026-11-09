@@ -50,7 +50,7 @@ export default class DpmhkProvider extends BaseProvider {
             route: String(attributes.line),
             timetableRoute: String(attributes.line),
             destination: attributes.destination || 'Neznámý cíl',
-            stop: 'Na trase...',
+            stop: attributes.stop || 'Na trase...',
             delay: `${delay} min`,
             delayColor: delayColor(delay),
             carrier: 'DPMHK',
@@ -75,5 +75,35 @@ export default class DpmhkProvider extends BaseProvider {
         }
     }
 
-    getTimetable() { return []; }
+    // Jízdní řád spoje z getPlatformsDataWithHistory přes můstek (plán + skutečnost + zpoždění
+    // na každé zastávce). Mají ho jen vozy na pravidelném spoji (s číslem spoje tn).
+    async getTimetable(id, attributes) {
+        if (!attributes?.trip || !attributes?.obu || !attributes?.routeName) return [];
+        try {
+            const url = `${BRIDGE_URL}/timetable?line=${encodeURIComponent(attributes.lineNum || '')}`
+                + `&trip=${encodeURIComponent(attributes.trip)}`
+                + `&route=${encodeURIComponent(attributes.routeName)}`
+                + `&obu=${encodeURIComponent(attributes.obu)}`;
+            const response = await fetch(url);
+            if (!response.ok) return [];
+            const { stops } = await response.json();
+            if (!stops?.length) return [];
+            return stops.map((s, index) => {
+                const isLast = index === stops.length - 1;
+                const block = (actual) => s.planned
+                    ? { planned: s.planned, actual: actual || s.planned, color: delayColor(s.delayMin || 0) }
+                    : null;
+                return {
+                    station: s.station,
+                    arr: isLast ? block(s.actualArr) : null,
+                    dep: isLast ? null : block(s.actualDep),
+                    isPassing: false,
+                    isNAD: false
+                };
+            });
+        } catch (error) {
+            console.warn('Jízdní řád DPMHK se nepodařilo stáhnout.', error);
+            return [];
+        }
+    }
 }
