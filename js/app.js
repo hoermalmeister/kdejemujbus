@@ -45,7 +45,7 @@ const providers = [
     new VdvProvider(),
     new IdpkProvider(),
     new MpvProvider('ODIS', 'odis'),
-    new MpvProvider('IDZK', 'zlin'),
+    new MpvProvider('IDZK', 'zlin', ['DSZO']),
     new MpvProvider('IDOL', 'idol'),
     new MpvProvider('IDESKA', 'jikord'),
     // IDOK je zatím vypnutý: dopravniportal.dpkv.cz neodpovídá z Railway ani z GitHubu

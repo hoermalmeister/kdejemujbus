@@ -20,10 +20,11 @@ function addMinutes(time, minutes) {
 }
 
 export default class MpvProvider extends BaseProvider {
-    constructor(providerName, portal) {
+    constructor(providerName, portal, hiddenCarriers = []) {
         super();
         this.providerName = providerName;
         this.apiUrl = `${BRIDGE_URL}/${portal}`;
+        this.hiddenCarriers = hiddenCarriers;   // dopravci, které tenhle portál neukazuje (mají vlastní zdroj)
     }
 
     async fetchData() {
@@ -53,6 +54,11 @@ export default class MpvProvider extends BaseProvider {
             const run = fields[CN.run];
             if (!line || !run || !item.x || !item.y) continue;
             if (item.external && ownTrips.has(`${line}_${run}`)) continue;
+            // Dopravce s vlastním zdrojem (např. DSZO v IDZK) na mapě neduplikujeme
+            if (this.hiddenCarriers.length) {
+                const carrier = String(item.cr || '').replace(/<[^>]*>/g, '').trim();
+                if (this.hiddenCarriers.includes(carrier)) continue;
+            }
 
             // Na mapě ukazujeme jen poslední tři číslice šestimístné linky
             const rawShortLine = fields[CN.shortLine] || line;

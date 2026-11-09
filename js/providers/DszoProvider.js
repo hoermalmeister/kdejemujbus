@@ -1,6 +1,7 @@
 import BaseProvider from './BaseProvider.js';
 
 const BRIDGE_URL = 'https://grapp-bridge-production.up.railway.app/dszo';
+const IDZK_ROUTE_URL = 'https://grapp-bridge-production.up.railway.app/mpv/zlin/route';
 
 function delayColor(minutes) {
     if (minutes > 15) return '#e74c3c';
@@ -68,7 +69,7 @@ export default class DszoProvider extends BaseProvider {
         if (!attributes) return null;
         const delay = attributes.delay || 0;
         return {
-            route: String(attributes.line),
+            route: attributes.spoj ? `${attributes.line}/${attributes.spoj}` : String(attributes.line),
             timetableRoute: String(attributes.line),
             destination: attributes.destination || 'Neznámý cíl',
             stop: attributes.stop || 'Na trase...',
@@ -82,8 +83,21 @@ export default class DszoProvider extends BaseProvider {
         };
     }
 
-    // Tvar trasy zdroj zatím nedává
-    getRouteInfo() { return null; }
+    // Trasu spoje nemá DSZO, ale IDZK ano (spárováno podle čísla vozu v bridge)
+    async getRouteInfo(id, attributes) {
+        const trip = attributes?.idzk;
+        if (!trip) return null;
+        try {
+            const query = new URLSearchParams({ num1: trip.line, num2: trip.run, cat: trip.cat }).toString();
+            const response = await fetch(`${IDZK_ROUTE_URL}?${query}`);
+            if (!response.ok) return null;
+            const data = await response.json();
+            return data.shape?.length >= 2 ? data.shape : null;
+        } catch (error) {
+            console.warn('Trasu DSZO z IDZK se nepodařilo stáhnout.', error);
+            return null;
+        }
+    }
 
     async getTimetable(id, attributes) {
         if (!attributes?.station) return [];
