@@ -907,7 +907,8 @@ function renderVehicles() {
         }
         
         // Extrakce IDESKA: IDPK a VDV čísla spoje hned nemají, proto porovnáváme jen šestimístnou linku
-        if (v.provider === 'IDESKA' && /^\d{6}$/.test(v.attributes?.line || '')) {
+        // Jen vlastní vozy IDESKA – cizí (external) jsou často vozy IDPK/VDV s jejich vlastními linkami
+        if (v.provider === 'IDESKA' && !v.attributes?.isExternal && /^\d{6}$/.test(v.attributes?.line || '')) {
             ideskaFullLines.add(v.attributes.line);
         }
 
