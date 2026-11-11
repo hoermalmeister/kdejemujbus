@@ -957,13 +957,12 @@ function renderVehicles() {
             return true;
         }
 
-        // PID zničí dublující se IDPK linky
+        // PID zničí dublující se IDPK linky – jen při shodě celé šestimístné linky (CIS).
+        // Krátké číslo (poslední 3 číslice) porovnávat nelze: PID má v provozu skoro všechna
+        // čísla 1–999, takže by mizela většina IDPK autobusů.
         if (v.provider === 'IDPK') {
-            // V.route u IDPK je díky ořezání z minula vždy krátké číslo (např. "467")
-            const shortLine = String(v.route).trim();
-            
-            // Pokud PID vysílá linku stejného jména, IDPK autobus úplně zahodíme
-            if (pidFullLines.has(shortLine)) {
+            const fullLine = String(v.attributes?.fullLine || '').trim();
+            if (/^\d{6}$/.test(fullLine) && pidFullLines.has(fullLine)) {
                 return false;
             }
         }
