@@ -3,6 +3,7 @@
 | Dopravní systém | Polohy | Detaily vozidel | Směr | Jízdní řády | Trasy |
 | :--- | :---: | :---: | :---: | :---: | :---: |
 | GRAPP | ✅ | ✅ | ✅ | ✅ | ✅ |
+| JHMD (Gepard Express) | ✅ | ✅ | ✅ | ✅ | ✅ |
 | PID | ✅ | ✅ | ✅ | ✅ | ✅ |
 | DÚK | ✅ | ✅ | ✅ | ✅ | ✅ |
 | IDOL | ✅ | ✅ | ✅ | ✅ | ✅ |
@@ -32,6 +33,7 @@
 
 ## Zdroje aktuálních poloh
 https://grapp.spravazeleznic.cz/  
+https://vlaky.gepard.com/  
 https://mapa.pid.cz/  
 https://provoz.kr-ustecky.cz/TMD  
 https://mpvnet.cz/idol/map  

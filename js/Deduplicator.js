@@ -1,5 +1,6 @@
+// JHMD (Gepard Express) má přednost před GRAPP – stejný vlak ukazujeme jen z dat dopravce
 const PROVIDER_PRIORITY = [
-    'GRAPP', 'PID', 'DÚK', 'IDOL', 'IREDO', 'IDS JMK', 'IDSOK', 'IDZK', 
+    'JHMD', 'GRAPP', 'PID', 'DÚK', 'IDOL', 'IREDO', 'IDS JMK', 'IDSOK', 'IDZK', 
     'ODIS', 'IDESKA', 'IDOK', 'IDPK', 'VDV', 'PMDP', 'DPMML', 'DPMD', 'DPMP', 'DPMHK', 
     'DPKV', 'DPMJ', 'TSHB', 'DPMLB', 'TSMK', 'DSZO', 'DPMÚL', 'MDT'
 ];

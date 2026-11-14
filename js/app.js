@@ -17,6 +17,7 @@ import TsmkProvider from './providers/TsmkProvider.js';
 import DszoProvider from './providers/DszoProvider.js';
 import PortaboProvider from './providers/PortaboProvider.js';
 import DpmhkProvider from './providers/DpmhkProvider.js';
+import GepardProvider from './providers/GepardProvider.js';
 
 // --- OCHRANA PROTI PŘIBLÍŽENÍ CELÉ STRÁNKY NA TELEFONU ---
 // Mapa si gesta řeší sama. Pokud je hlavní vlákno zaneprázdněné, Safari může gesto
@@ -59,7 +60,8 @@ const providers = [
     new DszoProvider(),
     new PortaboProvider('DPMÚL', 'dpmul', true),
     new PortaboProvider('MDT', 'mdt', true),
-    new DpmhkProvider()
+    new DpmhkProvider(),
+    new GepardProvider()
 ];
 
 const statusDiv = document.getElementById('status');
@@ -95,6 +97,7 @@ fetch('https://raw.githubusercontent.com/hoermalmeister/kdejemujbus-bridge/main/
 
 function getProviderColor(provider) {
     if (provider === 'GRAPP') return '#800000';
+    if (provider === 'JHMD') return '#800000';
     if (provider === 'PID') return '#d40000';
     if (provider === 'IDS JMK') return '#4ab95d';
     if (provider === 'IREDO') return '#ee7e1e';
@@ -990,6 +993,7 @@ function renderVehicles() {
                 // --- MATEMATIKA PRO DOKONALÉ PŘEKRÝVÁNÍ (Z-INDEX) ---
                 const zIndexBase = { 
                     'GRAPP': 9000, 
+                    'JHMD': 9100,
                     'IDS JMK': 8000, 
                     'PID': 7000, 
                     'IREDO': 3000,
