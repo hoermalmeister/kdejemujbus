@@ -81,6 +81,9 @@ let initialClickDone = false;
 let isTimetableOpen = false;
 
 let activeTrainData = { props: null, details: null, timetable: null };
+// Klíč právě rozkliknutého vozidla (provider|id) – jeho šipka se kreslí v jiné barvě
+let selectedVehicleKey = null;
+const SELECTED_COLOR = '#a2aab8';
 let jmkTwinsCache = new Map();
 
 let dukDict = {};
@@ -183,13 +186,13 @@ iconCanvas.height = ICON_SIZE * 2;
 const iconCtx = iconCanvas.getContext('2d', { willReadFrequently: true });
 const arrowPath = new Path2D("M 10.97,2.31 C 10.97,2.31 2.03,23.03 2.03,23.03 2.03,23.03 11.00,20.94 11.00,20.94 11.00,20.94 20.00,23.00 20.00,23.00 20.00,23.00 10.97,2.31 10.97,2.31 Z");
 
-function getOrCreateIcon(map, provider, routeText, heading) {
+function getOrCreateIcon(map, provider, routeText, heading, selected = false) {
     const isCircle = heading === null || heading === undefined;
     // Zaokrouhlení azimutu, aby se negenerovalo zbytečně moc obrázků a RAM zůstala čistá
     const safeHeading = isCircle ? 0 : (Math.round(heading / 10) * 10) % 360;
-    const iconId = `veh-${provider}-${routeText}-${isCircle ? 'c' : safeHeading}`;
+    const iconId = `veh-${provider}-${routeText}-${isCircle ? 'c' : safeHeading}${selected ? '-sel' : ''}`;
 
-    if (!iconSpecs.has(iconId)) iconSpecs.set(iconId, { provider, routeText, isCircle, safeHeading });
+    if (!iconSpecs.has(iconId)) iconSpecs.set(iconId, { provider, routeText, isCircle, safeHeading, selected });
     return iconId;
 }
 
@@ -202,7 +205,7 @@ function drawIcon(iconId) {
     ctx.clearRect(0, 0, iconCanvas.width, iconCanvas.height);
     ctx.scale(2, 2); ctx.translate(ICON_SIZE / 2, ICON_SIZE / 2);
 
-    const fillColor = getProviderColor(spec.provider);
+    const fillColor = spec.selected ? SELECTED_COLOR : getProviderColor(spec.provider);
 
     ctx.save();
     if (!spec.isCircle) {
@@ -234,6 +237,30 @@ function evictUnusedIcons(usedIconIds) {
     if (images.length <= MAX_CACHED_ICONS) return;
     for (const id of images) {
         if (id.startsWith('veh-') && !usedIconIds.has(id)) map.removeImage(id);
+    }
+}
+
+// --- OŽIVENÍ MAPY PO USPÁNÍ ZÁLOŽKY ---
+// Dlaždice, jejichž stahování prohlížeč při uspání přerušil, zůstanou ve stavu „chyba"
+// a MapLibre je samo znovu nenačte. Proto podklad po probuzení zahodíme a stáhneme znovu.
+const WAKE_RELOAD_AFTER_MS = 20000;
+function reviveMap() {
+    try {
+        map.resize();
+        const cache = map.style && map.style.sourceCaches && map.style.sourceCaches['carto-dark'];
+        if (cache && typeof cache.clearTiles === 'function' && typeof cache.update === 'function') {
+            cache.clearTiles();
+            cache.update(map.transform);
+        } else {
+            const source = map.getSource('carto-dark');
+            if (source && typeof source.setTiles === 'function') source.setTiles([...source.tiles]);
+        }
+        // Ikony vozidel se po ztrátě kontextu musí nakreslit znovu
+        lastFeatureSignature = '';
+        if (typeof scheduleRender === 'function') scheduleRender();
+        map.triggerRepaint();
+    } catch (error) {
+        console.warn('Oživení mapy se nepovedlo.', error);
     }
 }
 
@@ -293,13 +320,23 @@ map.on('load', () => {
 
     refreshAll();
     setInterval(() => { if (!document.hidden) refreshAll(); }, REFRESH_INTERVAL_MS);
+    let hiddenSince = 0;
     document.addEventListener('visibilitychange', () => {
-        if (!document.hidden && Date.now() - lastRefreshAt >= REFRESH_INTERVAL_MS) refreshAll();
+        if (document.hidden) { hiddenSince = Date.now(); return; }
+        // Po delším uspání prohlížeč zahodí rozpracované dlaždice (nebo i celý WebGL kontext)
+        if (hiddenSince && Date.now() - hiddenSince >= WAKE_RELOAD_AFTER_MS) reviveMap();
+        hiddenSince = 0;
+        if (Date.now() - lastRefreshAt >= REFRESH_INTERVAL_MS) refreshAll();
     });
+    // Návrat ze zmrazené stránky (bfcache) a obnovení připojení
+    window.addEventListener('pageshow', (e) => { if (e.persisted) { reviveMap(); refreshAll(); } });
+    window.addEventListener('online', () => { reviveMap(); refreshAll(); });
+    map.on('webglcontextrestored', () => setTimeout(reviveMap, 0));
 });
 
 async function openVehicleDetail(props) {
     map.getSource('selected-route').setData({ type: 'Feature', geometry: { type: 'LineString', coordinates: [] } });
+    setSelectedVehicle(props && props.provider && props.id ? vehicleKey(props) : null);
 
     panelBody.style.padding = '15px';
     panelBody.style.overflowY = 'auto';
@@ -512,7 +549,7 @@ function renderDetailView() {
             const featuresSource = map.getSource('vehicles');
             if (featuresSource) {
                 // Přegenerujeme ikonku jen pro toto jediné vozidlo, aby přišlo o šipku
-                activeTrainData.props.iconId = getOrCreateIcon(map, activeTrainData.props.provider, activeTrainData.props.route, null);
+                activeTrainData.props.iconId = getOrCreateIcon(map, activeTrainData.props.provider, activeTrainData.props.route, null, true);
                 
                 // Mírný hack pro MapLibre - donutíme data v source se překreslit s novou ikonkou
                 const currentData = featuresSource._data;
@@ -716,7 +753,15 @@ async function silentUpdateDetail(props) {
     }
 }
 
+// Přebarví šipku vybraného vozidla (a vrátí barvu předchozímu)
+function setSelectedVehicle(key) {
+    if (selectedVehicleKey === key) return;
+    selectedVehicleKey = key;
+    if (typeof scheduleRender === 'function') scheduleRender();
+}
+
 function closeDetailPanel() {
+    setSelectedVehicle(null);
     activeTrainData = { props: null, details: null, timetable: null };
     isTimetableOpen = false;
     updateURL();
@@ -985,7 +1030,8 @@ function renderVehicles() {
         .filter(v => v.lat !== undefined && v.lon !== undefined && v.lat !== null && v.lon !== null)
         .map(v => {
             const key = vehicleKey(v);
-            const iconId = getOrCreateIcon(map, v.provider, v.route, v.heading);
+            const isSelected = key === selectedVehicleKey;
+            const iconId = getOrCreateIcon(map, v.provider, v.route, v.heading, isSelected);
             vehicleIndex.set(key, v);
             usedIconIds.add(iconId);
             signatureParts.push(key, v.lon, v.lat, iconId);
@@ -1017,7 +1063,8 @@ function renderVehicles() {
                     'IDPK': 2000,
                     'VDV': 1000 
                 }[v.provider] || 0;
-                const sortKey = zIndexBase + Math.round((52 - v.lat) * 10000);
+                // Rozkliknuté vozidlo kreslíme nad všemi ostatními
+                const sortKey = (isSelected ? 1000000 : 0) + zIndexBase + Math.round((52 - v.lat) * 10000);
 
             return {
                 type: 'Feature',
