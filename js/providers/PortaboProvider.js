@@ -17,6 +17,55 @@ function addMinutes(time, minutes) {
     return `${String(Math.floor(total / 60)).padStart(2, '0')}:${String(total % 60).padStart(2, '0')}`;
 }
 
+// Zobrazovaný název zastávky: zkratku města „Ústí n.L." rozepíšeme na „Ústí nad Labem"
+export function displayStopName(name) {
+    return String(name || '').trim().replace(/^Ústí\s*n\.\s*L(ab)?\.?\s*(?=,|$)/i, 'Ústí nad Labem');
+}
+
+// Klíč pro porovnání názvů z Portaba a z GTFS: bez diakritiky, interpunkce a s rozepsanými
+// zkratkami („hl.nádr." = „Hlavní nádraží", „žel.st." = „nádraží", „nám." = „náměstí"…)
+function stopKey(name) {
+    return displayStopName(name)
+        .toLowerCase()
+        .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+        .replace(/hl\.\s*nadr\./g, 'hlavni nadrazi')
+        .replace(/zel\.\s*(st|zast)\./g, 'nadrazi')
+        .replace(/aut\.\s*(st|nadr)\./g, 'autobusove nadrazi')
+        .replace(/nadr\./g, 'nadrazi')
+        .replace(/nam\./g, 'namesti')
+        .replace(/sidl\./g, 'sidliste')
+        .replace(/[^a-z0-9]/g, '');
+}
+
+function minutesOf(time) {
+    const match = /^(\d{1,2}):(\d{2})/.exec(time || '');
+    return match ? Number(match[1]) * 60 + Number(match[2]) : null;
+}
+
+function pragueMinutesNow() {
+    const parts = new Intl.DateTimeFormat('en-GB', { timeZone: 'Europe/Prague', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' })
+        .formatToParts(new Date());
+    const get = (type) => Number(parts.find(p => p.type === type)?.value || 0);
+    return get('hour') * 60 + get('minute');
+}
+
+// Index aktuální zastávky v jízdním řádu podle názvu ze zdroje. Když se zastávka na spoji
+// opakuje (okružní linky), vybereme výskyt, jehož čas se zpožděním je nejblíž teď.
+function findCurrentIndex(timetable, stopName, delay) {
+    const key = stopKey(stopName);
+    if (!key) return -1;
+    const now = pragueMinutesNow();
+    let best = -1, bestDiff = Infinity;
+    timetable.forEach((stop, index) => {
+        if (stopKey(stop.name) !== key) return;
+        const planned = minutesOf(stop.dep || stop.arr);
+        let diff = planned === null ? 0 : Math.abs(planned + delay - now);
+        if (diff > 720) diff = 1440 - diff; // přes půlnoc
+        if (diff < bestDiff) { bestDiff = diff; best = index; }
+    });
+    return best;
+}
+
 // Jeden zdroj Portabo pro DPMÚL i MDT. U DPMÚL (useGtfs) dobíráme cíl, jízdní řád a trasu
 // z celostátního GTFS přes linku+spoj; MDT zůstává jen poloha (jeho spoje s GTFS nesedí).
 export default class PortaboProvider extends BaseProvider {
@@ -81,11 +130,22 @@ export default class PortaboProvider extends BaseProvider {
     async getDetails(globalId, attributes) {
         if (!attributes) return null;
         const delay = attributes.delay || 0;
+
+        // Aktuální zastávku pojmenujeme stejně jako v jízdním řádu, aby se v něm zvýraznila
+        let stop = attributes.stop ? displayStopName(attributes.stop) : 'Na trase...';
+        if (attributes.stop && this.useGtfs) {
+            const timetable = await this.getTimetableData(attributes);
+            if (timetable) {
+                const index = findCurrentIndex(timetable, attributes.stop, delay);
+                if (index >= 0) stop = displayStopName(timetable[index].name);
+            }
+        }
+
         return {
             route: attributes.spoj ? `${attributes.line}/${attributes.spoj}` : String(attributes.line),
             timetableRoute: attributes.spoj ? `${attributes.cis}/${attributes.spoj}` : String(attributes.line),
             destination: attributes.destination || 'Neznámý cíl',
-            stop: attributes.stop || 'Na trase...',
+            stop,
             delay: `${delay} min`,
             delayColor: delayColor(delay),
             carrier: this.providerName,
@@ -106,13 +166,19 @@ export default class PortaboProvider extends BaseProvider {
         const timetable = await this.getTimetableData(attributes);
         if (!timetable) return [];
 
-        // Feed nedává aktuální zastávku, takže jen jízdní řád se zpožděním na všech zastávkách
+        // Projeté zastávky (před aktuální) ukazujeme v plánu, od aktuální dál se zpožděním
         const delay = attributes.delay || 0;
-        const block = (time) => time ? { planned: time, actual: addMinutes(time, delay), color: delayColor(delay) } : null;
+        const currentIndex = attributes.stop ? findCurrentIndex(timetable, attributes.stop, delay) : -1;
         return timetable.map((stop, index) => {
             const isLast = index === timetable.length - 1;
+            const passed = currentIndex >= 0 && index < currentIndex;
+            const block = (time) => {
+                if (!time) return null;
+                if (passed) return { planned: time, actual: time, color: '#58d68d' };
+                return { planned: time, actual: addMinutes(time, delay), color: delayColor(delay) };
+            };
             return {
-                station: stop.name,
+                station: displayStopName(stop.name),
                 arr: isLast ? block(stop.arr) : null,
                 dep: isLast ? null : block(stop.dep),
                 isPassing: false,
