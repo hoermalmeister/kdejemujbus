@@ -56,6 +56,7 @@ const providers = [
     new DpmdProvider(),
     new DpmpProvider(),
     new DpmlbProvider(),
+    new DpmlbProvider('DPMJ', 'dpmj'),
     new TsmkProvider(),
     new DszoProvider(),
     new PortaboProvider('DPMÚL', 'dpmul', true),
@@ -118,6 +119,7 @@ function getProviderColor(provider) {
     if (provider === 'DPMD') return '#ff8080';
     if (provider === 'DPMP') return '#ff8080';
     if (provider === 'DPMLB') return '#ff8080';
+    if (provider === 'DPMJ') return '#ff8080';
     if (provider === 'TSMK') return '#ff8080';
     if (provider === 'DSZO') return '#ff8080';
     if (provider === 'DPMÚL') return '#ff8080';
@@ -1055,6 +1057,7 @@ function renderVehicles() {
                     'DPMD': 2050,
                     'DPMP': 2040,
                     'DPMLB': 2030,
+                    'DPMJ': 2025,
                     'TSMK': 2020,
                     'DSZO': 2010,
                     'DPMÚL': 2000,

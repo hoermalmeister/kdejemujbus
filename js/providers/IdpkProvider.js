@@ -1,5 +1,6 @@
 import BaseProvider from './BaseProvider.js';
 import { getGtfsRoute } from './gtfsRoutes.js';
+import { parsePvvdDetail, parsePvvdTimetable } from './pvvdShared.js';
 
 export default class IdpkProvider extends BaseProvider {
     constructor() {
@@ -83,17 +84,6 @@ export default class IdpkProvider extends BaseProvider {
         return !value || /n\/a/i.test(value);
     }
 
-    // Údaje jsou nově v <dl class="facts">, starší podoba s tabulkou zůstává jako záloha
-    parseFacts(doc) {
-        const facts = {};
-        const add = (keyEl, valueEl) => {
-            if (keyEl && valueEl) facts[keyEl.textContent.trim().toLowerCase()] = valueEl.textContent.trim();
-        };
-        doc.querySelectorAll('dl.facts > div').forEach(item => add(item.querySelector('dt'), item.querySelector('dd')));
-        doc.querySelectorAll('table tbody tr').forEach(row => add(row.querySelector('th'), row.querySelector('td')));
-        return facts;
-    }
-
     async getDetails(globalId, attributes) {
         if (!attributes) return null;
 
@@ -101,9 +91,6 @@ export default class IdpkProvider extends BaseProvider {
             const response = await fetch(`${this.detailUrl}${attributes.rawId}`);
             if (!response.ok) return null;
             const htmlString = await response.text();
-
-            const parser = new DOMParser();
-            const doc = parser.parseFromString(htmlString, 'text/html');
 
             let linka = attributes.fullLine || attributes.text;
             let spoj = "";
@@ -123,26 +110,14 @@ export default class IdpkProvider extends BaseProvider {
                 delayText = `${delayNum} min`;
             }
 
-            const facts = this.parseFacts(doc);
-
-            const lineAndRun = facts['linka / spoj'];
-            if (lineAndRun) {
-                const [lineValue, runValue] = lineAndRun.split('/').map(part => part.trim());
-                if (lineValue) linka = lineValue;
-                if (runValue) spoj = runValue;
-            }
-            if (facts['linka']) linka = facts['linka'];
-            if (facts['spoj']) spoj = facts['spoj'];
-
-            const stopName = facts['zastávka'];
-            if (stopName && !this.isMissingValue(stopName)) zastavka = stopName;
-
-            // Zpoždění je nově mimo seznam údajů, např. "+1 min"
-            const delaySource = doc.querySelector('.delay-value')?.textContent || facts['zpoždění'];
-            const parsedDelay = parseInt(String(delaySource || '').replace('+', '').trim(), 10);
-            if (!isNaN(parsedDelay)) {
-                delayNum = parsedDelay;
-                delayText = `${parsedDelay} min`;
+            // Linka/spoj, poslední zastávka a zpoždění z odpovědi portálu
+            const parsed = parsePvvdDetail(htmlString);
+            if (parsed.line) linka = parsed.line;
+            if (parsed.run) spoj = parsed.run;
+            if (parsed.stop) zastavka = parsed.stop;
+            if (parsed.delay !== null && delayNum !== 'Neznámé') {
+                delayNum = parsed.delay;
+                delayText = `${parsed.delay} min`;
             }
 
             let isAtDestination = false;
@@ -191,9 +166,6 @@ export default class IdpkProvider extends BaseProvider {
             if (!response.ok) return [];
             const htmlString = await response.text();
 
-            const parser = new DOMParser();
-            const doc = parser.parseFromString(htmlString, 'text/html');
-
             let delayMins = 0;
             if (details && details.delay && details.delay !== 'Neznámé') {
                 delayMins = parseInt(details.delay) || 0;
@@ -205,56 +177,7 @@ export default class IdpkProvider extends BaseProvider {
             else if (delayMins > 5) activeColor = '#f39c12';
             else if (delayMins < 0) activeColor = '#bada55';
 
-            const addDelay = (timeStr, delayMin) => {
-                if (!timeStr || timeStr === '--:--') return null;
-                let [h, m] = timeStr.split(':').map(Number);
-                m += delayMin;
-                if (m >= 60) { h += Math.floor(m / 60); m %= 60; }
-                else if (m < 0) { h -= Math.ceil(Math.abs(m) / 60); m = 60 - (Math.abs(m) % 60); }
-                if (h >= 24) h %= 24;
-                if (h < 0) h = (h % 24) + 24;
-                return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
-            };
-
-            const stops = [];
-            const rows = doc.querySelectorAll('#timetableCurrentContainer tbody tr');
-            let pastCurrentStop = false;
-
-            rows.forEach(row => {
-                const tds = row.querySelectorAll('td');
-                if (tds.length >= 3) {
-                    const stopName = tds[0].textContent.trim();
-                    const arrTime = tds[1].textContent.trim();
-                    const depTime = tds[2].textContent.trim();
-
-                    const style = row.getAttribute('style') || '';
-                    const isCurrentStop = style.includes('#ff112299') || style.includes('rgba(255, 17, 34');
-
-                    if (isCurrentStop) {
-                        pastCurrentStop = true;
-                    }
-
-                    let rowColor = (!pastCurrentStop && !isCurrentStop) ? '#58d68d' : activeColor;
-
-                    stops.push({
-                        station: stopName,
-                        arr: {
-                            planned: arrTime,
-                            actual: (!pastCurrentStop && !isCurrentStop) ? arrTime : addDelay(arrTime, delayMins),
-                            color: rowColor 
-                        },
-                        dep: {
-                            planned: depTime,
-                            actual: (!pastCurrentStop && !isCurrentStop) ? depTime : addDelay(depTime, delayMins),
-                            color: rowColor
-                        },
-                        isPassing: false,
-                        isNAD: false 
-                    });
-                }
-            });
-
-            return stops;
+            return parsePvvdTimetable(htmlString, delayMins, activeColor);
         } catch (error) {
             console.error("Chyba JŘ IDPK:", error);
             return [];

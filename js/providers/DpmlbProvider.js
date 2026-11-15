@@ -1,7 +1,7 @@
 import BaseProvider from './BaseProvider.js';
 import { getGtfsRoute } from './gtfsRoutes.js';
 
-const BRIDGE_URL = 'https://grapp-bridge-production.up.railway.app/dpmlb';
+const BRIDGE_BASE = 'https://grapp-bridge-production.up.railway.app';
 const TIMETABLES_URL = 'https://hoermalmeister.github.io/kdejemujbus-bridge/timetables';
 
 function delayColor(minutes) {
@@ -17,20 +17,23 @@ function addMinutes(time, minutes) {
     return `${String(Math.floor(total / 60)).padStart(2, '0')}:${String(total % 60).padStart(2, '0')}`;
 }
 
+// Zdroje bez čísla spoje, kterým ho dopočítává můstek z polohy a jízdního řádu (DPMLB, DPMJ)
 export default class DpmlbProvider extends BaseProvider {
-    constructor() {
+    constructor(providerName = 'DPMLB', endpoint = 'dpmlb') {
         super();
-        this.providerName = 'DPMLB';
+        this.providerName = providerName;
+        this.endpoint = endpoint;
+        this.bridgeUrl = `${BRIDGE_BASE}/${endpoint}`;
         this.timetableCache = new Map();
     }
 
     async fetchData() {
         try {
-            const response = await this.fetchWithTimeout(BRIDGE_URL);
-            if (!response.ok) throw new Error(`DPMLB chyba: ${response.status}`);
+            const response = await this.fetchWithTimeout(this.bridgeUrl);
+            if (!response.ok) throw new Error(`${this.providerName} chyba: ${response.status}`);
             return this.normalize(await response.json());
         } catch (error) {
-            console.error('Chyba DPMLB:', error.message);
+            console.error(`Chyba ${this.providerName}:`, error.message);
             return [];
         }
     }
@@ -39,7 +42,7 @@ export default class DpmlbProvider extends BaseProvider {
         return rawData
             .filter(item => item.lat && item.lng && item.line)
             .map(item => ({
-                id: `dpmlb_${item.vehicle}`,
+                id: `${this.endpoint}_${item.vehicle}`,
                 provider: this.providerName,
                 lat: item.lat,
                 lon: item.lng,
@@ -47,7 +50,7 @@ export default class DpmlbProvider extends BaseProvider {
                 route: item.line,
                 headsign: item.destination || 'Neznámý cíl',
                 // Zdroj nemá číslo spoje, proto se vozy s ostatními zdroji nepárují
-                globalMatchId: `dpmlb_${item.vehicle}`,
+                globalMatchId: `${this.endpoint}_${item.vehicle}`,
                 delay: `${item.delay || 0} min`,
                 attributes: { ...item }
             }));
@@ -78,8 +81,9 @@ export default class DpmlbProvider extends BaseProvider {
     async getDetails(globalId, attributes) {
         if (!attributes) return null;
         const delay = attributes.delay || 0;
-        let stop = 'Na trase...';
-        if (attributes.run != null) {
+        // Poslední zastávku bereme ze zdroje, když ji posílá (DPMJ), jinak z dopočteného spoje
+        let stop = attributes.stop || 'Na trase...';
+        if (!attributes.stop && attributes.run != null) {
             const timetable = await this.getTimetableData(attributes);
             stop = timetable?.[attributes.stopIndex]?.name || stop;
         }
@@ -90,7 +94,7 @@ export default class DpmlbProvider extends BaseProvider {
             stop,
             delay: `${delay} min`,
             delayColor: delayColor(delay),
-            carrier: 'DPMLB',
+            carrier: this.providerName,
             isNAD: false,
             isOdklon: false,
             isOffline: false,

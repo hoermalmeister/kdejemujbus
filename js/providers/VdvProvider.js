@@ -1,5 +1,6 @@
 import BaseProvider from './BaseProvider.js';
 import { getGtfsRoute } from './gtfsRoutes.js';
+import { parsePvvdDetail, parsePvvdTimetable } from './pvvdShared.js';
 
 export default class VdvProvider extends BaseProvider {
     constructor() {
@@ -54,35 +55,15 @@ export default class VdvProvider extends BaseProvider {
             const res = await fetch(`${this.detailUrl}${attributes.id}`);
             if (res.ok) {
                 const html = await res.text();
-                const doc = new DOMParser().parseFromString(html, 'text/html');
-                
-                let exSpoj = null;
-                const trs = doc.querySelectorAll('tr');
-                
-                trs.forEach(tr => {
-                    const th = tr.querySelector('th');
-                    const td = tr.querySelector('td');
-                    if (th && td) {
-                        const key = th.textContent.toLowerCase();
-                        const val = td.textContent.trim();
-                        
-                        if (key.includes('linka')) fullText = val;
-                        if (key.includes('spoj')) exSpoj = val;
-                        if (key.includes('zast')) stop = val;
-                        if (key.includes('zpo')) {
-                            if (val.toLowerCase().includes('včas') || val.includes('0 min')) {
-                                delayText = '0 min';
-                                delayNum = 0;
-                            } else {
-                                let parsed = parseInt(val);
-                                if (!isNaN(parsed)) {
-                                    delayNum = parsed;
-                                    delayText = `${parsed} min`; // Zrušeno +
-                                }
-                            }
-                        }
-                    }
-                });
+                // Portál VDV dnes vrací stejné HTML jako IDPK, čteme ho společným kódem
+                const parsed = parsePvvdDetail(html);
+                if (parsed.line) fullText = parsed.line;
+                const exSpoj = parsed.run;
+                if (parsed.stop) stop = parsed.stop;
+                if (parsed.delay !== null && delayNum !== 'Neznámé') {
+                    delayNum = parsed.delay;
+                    delayText = `${parsed.delay} min`;
+                }
 
                 shortRoute = fullText.length >= 3 ? fullText.slice(-3) : fullText;
                 if (exSpoj) {
@@ -144,12 +125,7 @@ export default class VdvProvider extends BaseProvider {
             if (!response.ok) return null;
             
             const html = await response.text();
-            const doc = new DOMParser().parseFromString(html, 'text/html');
-            const rows = doc.querySelectorAll('#timetableCurrentContainer tbody tr');
-            if (!rows || rows.length === 0) return null;
 
-            const stops = [];
-            
             let isUnknown = (attributes.delay === 'Neznámé' || attributes.delay === -2147483648);
             let delayMins = isUnknown ? 0 : (parseInt(attributes.delay) || 0);
 
@@ -159,46 +135,8 @@ export default class VdvProvider extends BaseProvider {
             else if (delayMins > 5) color = '#f39c12';
             else if (delayMins < 0) color = '#bada55';
 
-            const extractTime = (td) => {
-                if (!td) return null;
-                const text = td.textContent.trim();
-                return text && text !== '--:--' && text !== '' ? text : null;
-            };
-
-            const calculateActualTime = (plannedTime, delay) => {
-                 if (!plannedTime) return null;
-                 let parts = plannedTime.split(':');
-                 if(parts.length < 2) return plannedTime;
-                 let pMins = parseInt(parts[0], 10) * 60 + parseInt(parts[1], 10);
-                 let aMins = pMins + delay;
-                 if (aMins < 0) aMins += 24 * 60;
-                 if (aMins >= 24 * 60) aMins %= (24 * 60);
-                 return `${Math.floor(aMins / 60).toString().padStart(2, '0')}:${(aMins % 60).toString().padStart(2, '0')}`;
-            };
-
-            rows.forEach((row, index) => {
-                const tds = row.querySelectorAll('td');
-                if (tds.length < 3) return;
-
-                const stationName = tds[0].textContent.trim();
-                const pArr = extractTime(tds[1]);
-                const pDep = extractTime(tds[2]);
-                const aArr = calculateActualTime(pArr, delayMins);
-                const aDep = calculateActualTime(pDep, delayMins);
-
-                let arrival = null;
-                let departure = null;
-                const arrBlock = { planned: pArr, actual: aArr, color: color };
-                const depBlock = { planned: pDep, actual: aDep, color: color };
-
-                if (index === 0) departure = depBlock;
-                else if (index === rows.length - 1) arrival = arrBlock;
-                else { arrival = arrBlock; departure = depBlock; }
-
-                stops.push({ station: stationName, isNAD: false, isPassing: false, arr: arrival, dep: departure });
-            });
-            
-            return stops;
+            const stops = parsePvvdTimetable(html, delayMins, color);
+            return stops.length ? stops : null;
         } catch (error) { return null; }
     }
 
