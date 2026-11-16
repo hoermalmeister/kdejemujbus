@@ -27,6 +27,8 @@ export default class DpmlbProvider extends BaseProvider {
         this.endpoint = endpoint;
         this.idPrefix = endpoint.replace(/[^a-z0-9]+/gi, '_');
         this.estimated = Boolean(options.estimated);
+        // options.noDelay = real-time poloha, ale zdroj zpoždění nedává (DPKV)
+        this.unknownDelay = this.estimated || Boolean(options.noDelay);
         this.carrier = options.carrier || providerName;
         this.bridgeUrl = `${BRIDGE_BASE}/${endpoint}`;
         this.timetableCache = new Map();
@@ -56,7 +58,7 @@ export default class DpmlbProvider extends BaseProvider {
                 headsign: item.destination || 'Neznámý cíl',
                 // Zdroj nemá číslo spoje, proto se vozy s ostatními zdroji nepárují
                 globalMatchId: `${this.idPrefix}_${item.vehicle}`,
-                delay: this.estimated ? 'Neznámé' : `${item.delay || 0} min`,
+                delay: this.unknownDelay ? 'Neznámé' : `${item.delay || 0} min`,
                 attributes: { ...item }
             }));
     }
@@ -100,8 +102,8 @@ export default class DpmlbProvider extends BaseProvider {
             destination: attributes.destination || 'Neznámý cíl',
             stop,
             // Teoretická poloha: zpoždění neznáme, v hlavičce se ukáže „Odhad polohy"
-            delay: this.estimated ? 'Neznámé' : `${delay} min`,
-            delayColor: this.estimated ? '#7f8c8d' : delayColor(delay),
+            delay: this.unknownDelay ? 'Neznámé' : `${delay} min`,
+            delayColor: this.unknownDelay ? '#7f8c8d' : delayColor(delay),
             carrier: this.carrier,
             isNAD: false,
             isOdklon: false,

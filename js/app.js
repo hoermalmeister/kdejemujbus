@@ -59,6 +59,8 @@ const providers = [
     new DpmlbProvider('DPMJ', 'dpmj'),
     new DpmlbProvider('Kladno', 'kladno'),
     new DpmlbProvider('ArrivaEX', 'arrivaex'),
+    // DPKV: polohy posílá telefon v ČR (portál nepouští datacentra), zpoždění zdroj nedává
+    new DpmlbProvider('DPKV', 'dpkv', { noDelay: true, carrier: 'DP Karlovy Vary' }),
     // Linky bez real-time poloh – teoretická poloha podle jízdního řádu
     new DpmlbProvider('MHD Ústí n.O.', 'scheduled/705100', { estimated: true, carrier: 'ČSAD Ústí nad Orlicí' }),
     new DpmlbProvider('MHD Jičín', 'scheduled/635007', { estimated: true, carrier: 'Fejfar Bus' }),
@@ -128,6 +130,7 @@ function getProviderColor(provider) {
     if (provider === 'DPMJ') return '#ff8080';
     if (provider === 'Kladno') return '#ff8080';
     if (provider === 'ArrivaEX') return '#00b2a9';
+    if (provider === 'DPKV') return '#ff8080';
     if (provider === 'MHD Ústí n.O.' || provider === 'MHD Jičín' || provider === 'MHD Tachov') return '#a4c400';
     if (provider === 'TSMK') return '#ff8080';
     if (provider === 'DSZO') return '#ff8080';
@@ -1070,6 +1073,7 @@ function renderVehicles() {
                     'DPMJ': 2025,
                     'Kladno': 2022,
                     'ArrivaEX': 3000,
+                    'DPKV': 2035,
                     'MHD Ústí n.O.': 1500,
                     'MHD Jičín': 1500,
                     'MHD Tachov': 1500,
