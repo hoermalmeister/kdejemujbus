@@ -30,6 +30,9 @@
 | MDT | ✅ | ✅ | ✅ | ✅ | ✅ |
 | ArrivaEX | ✅ | ✅ | ✅ | 🟡 | 🟡 |
 | Kladno | ✅ | ✅ | ✅ | 🟡 | 🟡 |
+| MHD Ústí nad Orlicí (odhad z JŘ) | 🟡 | ✅ | 🟡 | ✅ | ✅ |
+| MHD Jičín (odhad z JŘ) | 🟡 | ✅ | 🟡 | ✅ | ✅ |
+| MHD Tachov (odhad z JŘ) | 🟡 | ✅ | 🟡 | ✅ | ✅ |
 
 ## Zdroje aktuálních poloh
 https://grapp.spravazeleznic.cz/  
@@ -64,10 +67,7 @@ https://www.arriva.cz/cs/dopravni-info/aktualni-poloha-autobusu-online?mainType=
 ## Chybějící zdroje
 IDOK    
 Třebíč  
-Ústí nad Orlicí  
 Špindlerův Mlýn  
-Jičín  
-Tachov   
 Žatec  
 Louny  
 Lovosice  

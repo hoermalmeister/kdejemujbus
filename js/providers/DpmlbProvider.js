@@ -19,10 +19,15 @@ function addMinutes(time, minutes) {
 
 // Zdroje bez čísla spoje, kterým ho dopočítává můstek z polohy a jízdního řádu (DPMLB, DPMJ, Kladno, Arriva Express)
 export default class DpmlbProvider extends BaseProvider {
-    constructor(providerName = 'DPMLB', endpoint = 'dpmlb') {
+    // options.estimated = linka bez real-time poloh, poloha je jen teoretická podle jízdního řádu
+    // options.carrier = dopravce zobrazený v detailu
+    constructor(providerName = 'DPMLB', endpoint = 'dpmlb', options = {}) {
         super();
         this.providerName = providerName;
         this.endpoint = endpoint;
+        this.idPrefix = endpoint.replace(/[^a-z0-9]+/gi, '_');
+        this.estimated = Boolean(options.estimated);
+        this.carrier = options.carrier || providerName;
         this.bridgeUrl = `${BRIDGE_BASE}/${endpoint}`;
         this.timetableCache = new Map();
     }
@@ -42,7 +47,7 @@ export default class DpmlbProvider extends BaseProvider {
         return rawData
             .filter(item => item.lat && item.lng && item.line)
             .map(item => ({
-                id: `${this.endpoint}_${item.vehicle}`,
+                id: `${this.idPrefix}_${item.vehicle}`,
                 provider: this.providerName,
                 lat: item.lat,
                 lon: item.lng,
@@ -50,8 +55,8 @@ export default class DpmlbProvider extends BaseProvider {
                 route: item.line,
                 headsign: item.destination || 'Neznámý cíl',
                 // Zdroj nemá číslo spoje, proto se vozy s ostatními zdroji nepárují
-                globalMatchId: `${this.endpoint}_${item.vehicle}`,
-                delay: `${item.delay || 0} min`,
+                globalMatchId: `${this.idPrefix}_${item.vehicle}`,
+                delay: this.estimated ? 'Neznámé' : `${item.delay || 0} min`,
                 attributes: { ...item }
             }));
     }
@@ -94,12 +99,13 @@ export default class DpmlbProvider extends BaseProvider {
             timetableRoute: this.linkospoj(attributes) || attributes.line,
             destination: attributes.destination || 'Neznámý cíl',
             stop,
-            delay: `${delay} min`,
-            delayColor: delayColor(delay),
-            carrier: this.providerName,
+            // Teoretická poloha: zpoždění neznáme, v hlavičce se ukáže „Odhad polohy"
+            delay: this.estimated ? 'Neznámé' : `${delay} min`,
+            delayColor: this.estimated ? '#7f8c8d' : delayColor(delay),
+            carrier: this.carrier,
             isNAD: false,
             isOdklon: false,
-            isOffline: false,
+            isOffline: this.estimated,
             isAtDestination: false
         };
     }
