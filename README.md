@@ -20,20 +20,20 @@
 | DPMD | ✅ | ✅ | ✅ | ✅ | ✅ |
 | DPMP | ✅ | ✅ | ✅ | ✅ | ✅ |
 | DPMHK | ✅ | ✅ | ✅ | ✅ | ✅ |
-| DPKV (přes telefon v ČR) | ✅ | ✅ | 🟡 | ✅ | ✅ |
+| DPKV | 🔵 | ✅ | 🟡 | ✅ | ✅ |
 | DPMJ | ✅ | ✅ | ✅ | 🟡 | 🟡 |
 | TSHB | ✅ | ✅ | ✅ | ✅ | ✅ |
 | TSMK | ✅ | ✅ | ✅ | ✅ | ✅ |
 | DPMLB | ✅ | ✅ | ✅ | 🟡 | 🟡 |
 | DSZO | ✅ | ✅ | ✅ | ✅ | ✅ |
-| DPMÚL | ✅ | ✅ | ✅ | ✅ | ✅ |
+| DPMÚL | 🔵 | ✅ | ✅ | ✅ | ✅ |
 | MDT | ✅ | ✅ | ✅ | ✅ | ✅ |
 | ArrivaEX | ✅ | ✅ | ✅ | 🟡 | 🟡 |
 | Kladno | ✅ | ✅ | ✅ | 🟡 | 🟡 |
-| MHD Ústí nad Orlicí (odhad z JŘ) | 🟡 | ✅ | 🟡 | ✅ | ✅ |
-| MHD Jičín (odhad z JŘ) | 🟡 | ✅ | 🟡 | ✅ | ✅ |
-| MHD Tachov (odhad z JŘ) | 🟡 | ✅ | 🟡 | ✅ | ✅ |
-| MHD Špindlerův Mlýn (odhad z JŘ) | 🟡 | ✅ | 🟡 | ✅ | ✅ |
+| MHD Ústí nad Orlicí | 🟡 | ✅ | 🟡 | ✅ | ✅ |
+| MHD Jičín | 🟡 | ✅ | 🟡 | ✅ | ✅ |
+| MHD Tachov | 🟡 | ✅ | 🟡 | ✅ | ✅ |
+| MHD Špindlerův Mlýn | 🟡 | ✅ | 🟡 | ✅ | ✅ |
 
 ## Zdroje aktuálních poloh
 https://grapp.spravazeleznic.cz/  
