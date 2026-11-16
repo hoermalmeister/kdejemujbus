@@ -58,9 +58,14 @@ export default class DpmlbProvider extends BaseProvider {
                 headsign: item.destination || 'Neznámý cíl',
                 // Zdroj nemá číslo spoje, proto se vozy s ostatními zdroji nepárují
                 globalMatchId: `${this.idPrefix}_${item.vehicle}`,
-                delay: this.unknownDelay ? 'Neznámé' : `${item.delay || 0} min`,
+                delay: this.isDelayUnknown(item) ? 'Neznámé' : `${item.delay || 0} min`,
                 attributes: { ...item }
             }));
+    }
+
+    // Zpoždění neznáme u teoretických poloh a u vozů, kde ho zdroj (zatím) neposlal (DPKV)
+    isDelayUnknown(item) {
+        return this.unknownDelay || item?.delayKnown === false;
     }
 
     // Spoj dopočítal bridge; jízdní řád i trasa jsou pak z GTFS
@@ -102,8 +107,8 @@ export default class DpmlbProvider extends BaseProvider {
             destination: attributes.destination || 'Neznámý cíl',
             stop,
             // Teoretická poloha: zpoždění neznáme, v hlavičce se ukáže „Odhad polohy"
-            delay: this.unknownDelay ? 'Neznámé' : `${delay} min`,
-            delayColor: this.unknownDelay ? '#7f8c8d' : delayColor(delay),
+            delay: this.isDelayUnknown(attributes) ? 'Neznámé' : `${delay} min`,
+            delayColor: this.isDelayUnknown(attributes) ? '#7f8c8d' : delayColor(delay),
             carrier: this.carrier,
             isNAD: false,
             isOdklon: false,

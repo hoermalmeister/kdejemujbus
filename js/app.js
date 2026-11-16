@@ -59,8 +59,8 @@ const providers = [
     new DpmlbProvider('DPMJ', 'dpmj'),
     new DpmlbProvider('Kladno', 'kladno'),
     new DpmlbProvider('ArrivaEX', 'arrivaex'),
-    // DPKV: polohy posílá telefon v ČR (portál nepouští datacentra), zpoždění zdroj nedává
-    new DpmlbProvider('DPKV', 'dpkv', { noDelay: true, carrier: 'DP Karlovy Vary' }),
+    // DPKV: polohy a zpoždění posílá telefon v ČR (portál nepouští datacentra)
+    new DpmlbProvider('DPKV', 'dpkv', { carrier: 'DP Karlovy Vary' }),
     // Linky bez real-time poloh – teoretická poloha podle jízdního řádu
     new DpmlbProvider('MHD Ústí n.O.', 'scheduled/705100', { estimated: true, carrier: 'ČSAD Ústí nad Orlicí' }),
     new DpmlbProvider('MHD Jičín', 'scheduled/635007', { estimated: true, carrier: 'Fejfar Bus' }),
