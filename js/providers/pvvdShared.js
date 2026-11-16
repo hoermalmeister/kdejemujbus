@@ -1,7 +1,7 @@
 // Společné čtení odpovědí portálů PVVD (IDPK – pvvd.idpk.cz, VDV – mapavdv.kr-vysocina.cz).
 // Oba portály vracejí stejné HTML: údaje v <dl class="facts">, zpoždění v .delay-value
-// a jízdní řád jako tabulku se dvěma sloupci (zastávka, plán). Starší podoby (tabulka
-// th/td, tři sloupce s příjezdem a odjezdem) zůstávají podporované jako záloha.
+// a jízdní řád jako tabulku (zastávka, plán, očekávaný čas); sloupce se poznají podle hlavičky.
+// Starší podoby (bez hlavičky, sloupce příjezd/odjezd) zůstávají podporované jako záloha.
 
 const MINUS = /[−–—]/g; // typografické minus a pomlčky → "-"
 
@@ -60,14 +60,23 @@ function addMinutes(time, minutes) {
     return `${String(Math.floor(total / 60)).padStart(2, '0')}:${String(total % 60).padStart(2, '0')}`;
 }
 
-// Příjezd uvedený v buňce se zastávkou („Jamné příjezd 12:54"), když se liší od odjezdu.
-// Vrátí { name, arr } – název bez poznámky a čas příjezdu (nebo null).
-const ARRIVAL_IN_NAME = /\s*(?:p\u0159\u00edjezd|prijezd|arrival|arr\.?|p\u0159\.)\s*:?\s*(\d{1,2}:\d{2})\s*/i;
+// Příjezd uvedený v buňce se zastávkou („Jamné příjezd 12:54", „arrives 19:27"), když se liší
+// od odjezdu. Vrátí { name, arr } – název bez poznámky a čas příjezdu (nebo null).
+const ARRIVAL_IN_NAME = /\s*(?:příjezd|prijezd|přijíždí|arrives|arrival|arr\.?|př\.)\s*:?\s*(\d{1,2}:\d{2})\s*/i;
 function splitStationCell(cell) {
-    const text = cell.textContent.replace(/\s+/g, ' ').trim();
-    const match = ARRIVAL_IN_NAME.exec(text);
-    if (!match) return { name: text, arr: null };
-    return { name: text.replace(match[0], ' ').replace(/\s+/g, ' ').trim(), arr: match[1].padStart(5, '0') };
+    const note = cell.querySelector('.stop-arrival');
+    const noteText = note ? note.textContent : '';
+    const clone = cell.cloneNode(true);
+    clone.querySelectorAll('.stop-arrival').forEach(el => el.remove());
+    let name = clone.textContent.replace(/\s+/g, ' ').trim();
+    let arrSource = noteText;
+    if (!note) {
+        arrSource = name;
+    }
+    const match = ARRIVAL_IN_NAME.exec(arrSource) || /(\d{1,2}:\d{2})/.exec(noteText);
+    if (!match) return { name, arr: null };
+    if (!note) name = name.replace(match[0], ' ').replace(/\s+/g, ' ').trim();
+    return { name, arr: match[1].padStart(5, '0') };
 }
 
 function cleanTime(cell) {
@@ -75,10 +84,36 @@ function cleanTime(cell) {
     return /^\d{1,2}:\d{2}/.test(text) ? text.slice(0, 5).padStart(5, '0') : null;
 }
 
-// Jízdní řád ve tvaru pro aplikaci. Projeté zastávky ukazují plán, aktuální a další plán + zpoždění.
+// Význam sloupců podle hlavičky tabulky (Stop | Scheduled | Expected, Zastávka | Plán | Očekávaný…).
+// Bez hlavičky: 2 sloupce = zastávka + čas, 3 sloupce = zastávka + příjezd + odjezd (starší podoba).
+function columnLayout(doc, cellCount) {
+    const headers = [...doc.querySelectorAll('#timetableCurrentContainer thead th')]
+        .map(th => th.textContent.replace(/\s+/g, ' ').trim().toLowerCase());
+    const find = (re, except) => headers.findIndex(h => re.test(h) && !(except && except.test(h)));
+    const EXPECTED = /expected|očekáv|předpokl|skuteč|actual|aktuáln|real/;
+    if (headers.length >= 2) {
+        const expected = find(EXPECTED);
+        const arr = find(/příjezd|arrival|^př\.?$/, EXPECTED);
+        const dep = find(/odjezd|departure|^odj\.?$/, EXPECTED);
+        const plan = find(/scheduled|plán|plan|jízdní|čas|time/, EXPECTED);
+        if (arr >= 0 || dep >= 0 || plan >= 0) {
+            return { arr, dep: dep >= 0 ? dep : (arr >= 0 ? -1 : plan), expected };
+        }
+    }
+    if (cellCount >= 3) return { arr: 1, dep: 2, expected: -1 };
+    return { arr: -1, dep: 1, expected: -1 };
+}
+
+// Jízdní řád ve tvaru pro aplikaci. Projeté zastávky ukazují plán, aktuální a další plán + zpoždění
+// (nebo očekávaný čas, pokud ho portál uvádí).
 export function parsePvvdTimetable(html, delayMins, activeColor) {
     const doc = new DOMParser().parseFromString(html, 'text/html');
-    const rows = [...doc.querySelectorAll('#timetableCurrentContainer tbody tr')]
+    const trs = [...doc.querySelectorAll('#timetableCurrentContainer tbody tr')];
+    const firstCells = trs.find(tr => tr.querySelectorAll('td').length >= 2)?.querySelectorAll('td').length || 2;
+    const layout = columnLayout(doc, firstCells);
+    const cellAt = (cells, index) => (index >= 0 && index < cells.length ? cells[index] : null);
+
+    const rows = trs
         .map(row => {
             const cells = row.querySelectorAll('td');
             if (cells.length < 2) return null;
@@ -86,11 +121,10 @@ export function parsePvvdTimetable(html, delayMins, activeColor) {
             const station = splitStationCell(cells[0]);
             return {
                 station: station.name,
-                // dva sloupce = jeden čas (odjezd, případný příjezd je v buňce se zastávkou),
-                // tři sloupce = příjezd a odjezd
-                arr: cells.length >= 3 ? cleanTime(cells[1]) : null,
+                arr: cleanTime(cellAt(cells, layout.arr)),
                 arrInName: station.arr,
-                dep: cleanTime(cells.length >= 3 ? cells[2] : cells[1]),
+                dep: cleanTime(cellAt(cells, layout.dep)),
+                expected: cleanTime(cellAt(cells, layout.expected)),
                 isPast: row.classList.contains('is-past'),
                 isCurrent: row.classList.contains('is-current') || row.hasAttribute('aria-current')
                     || style.includes('#ff112299') || style.includes('rgba(255, 17, 34')
@@ -105,9 +139,9 @@ export function parsePvvdTimetable(html, delayMins, activeColor) {
 
     return rows.map((row, index) => {
         const passed = currentIndex >= 0 ? index < currentIndex : row.isPast;
-        const block = (planned) => planned ? {
+        const block = (planned, expected) => planned ? {
             planned,
-            actual: passed ? planned : addMinutes(planned, delayMins),
+            actual: passed ? planned : (expected || addMinutes(planned, delayMins)),
             color: passed ? '#58d68d' : activeColor
         } : null;
 
@@ -115,15 +149,15 @@ export function parsePvvdTimetable(html, delayMins, activeColor) {
         if (row.arrInName) {
             // zastávka s delším pobytem: příjezd z poznámky, odjezd ze sloupce s časem
             arr = block(row.arrInName);
-            dep = index === lastIndex ? null : block(row.dep);
-        } else if (row.arr) {
-            // starší podoba se dvěma časy
+            dep = index === lastIndex ? null : block(row.dep, row.expected);
+        } else if (row.arr && row.dep) {
+            // samostatné sloupce příjezdu a odjezdu
             arr = index === 0 ? null : block(row.arr);
-            dep = index === lastIndex ? null : block(row.dep);
+            dep = index === lastIndex ? null : block(row.dep, row.expected);
         } else if (index === lastIndex) {
-            arr = block(row.dep);
+            arr = block(row.arr || row.dep, row.expected);
         } else {
-            dep = block(row.dep);
+            dep = block(row.dep || row.arr, row.expected);
         }
         return { station: row.station, arr, dep, isPassing: false, isNAD: false };
     });
