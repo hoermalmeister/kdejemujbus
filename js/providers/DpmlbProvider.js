@@ -17,7 +17,7 @@ function addMinutes(time, minutes) {
     return `${String(Math.floor(total / 60)).padStart(2, '0')}:${String(total % 60).padStart(2, '0')}`;
 }
 
-// Zdroje bez čísla spoje, kterým ho dopočítává můstek z polohy a jízdního řádu (DPMLB, DPMJ)
+// Zdroje bez čísla spoje, kterým ho dopočítává můstek z polohy a jízdního řádu (DPMLB, DPMJ, Kladno, Arriva Express)
 export default class DpmlbProvider extends BaseProvider {
     constructor(providerName = 'DPMLB', endpoint = 'dpmlb') {
         super();
@@ -81,9 +81,11 @@ export default class DpmlbProvider extends BaseProvider {
     async getDetails(globalId, attributes) {
         if (!attributes) return null;
         const delay = attributes.delay || 0;
-        // Poslední zastávku bereme ze zdroje, když ji posílá (DPMJ), jinak z dopočteného spoje
+        // Poslední zastávka: když ji můstek našel v jízdním řádu spoje (stopMatched), použijeme
+        // název z jízdního řádu, aby se v něm zvýraznila; jinak název ze zdroje, a když zdroj
+        // žádný neposílá, odhad z dopočteného spoje
         let stop = attributes.stop || 'Na trase...';
-        if (!attributes.stop && attributes.run != null) {
+        if (attributes.run != null && (attributes.stopMatched || !attributes.stop)) {
             const timetable = await this.getTimetableData(attributes);
             stop = timetable?.[attributes.stopIndex]?.name || stop;
         }

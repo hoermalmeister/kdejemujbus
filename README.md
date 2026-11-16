@@ -28,8 +28,8 @@
 | DSZO | ✅ | ✅ | ✅ | ✅ | ✅ |
 | DPMÚL | ✅ | ✅ | ✅ | ✅ | ✅ |
 | MDT | ✅ | ✅ | ✅ | ✅ | ✅ |
-| ArrivaEX | [ ] | [ ] | [ ] | [ ] | [ ] |
-| Kladno | [ ] | [ ] | [ ] | [ ] | [ ] |
+| ArrivaEX | ✅ | ✅ | ✅ | 🟡 | 🟡 |
+| Kladno | ✅ | ✅ | ✅ | 🟡 | 🟡 |
 
 ## Zdroje aktuálních poloh
 https://grapp.spravazeleznic.cz/  

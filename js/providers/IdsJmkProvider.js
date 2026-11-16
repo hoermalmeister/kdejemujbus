@@ -160,10 +160,12 @@ export default class IdsJmkProvider extends BaseProvider {
                         previous.dep = depBlock;
                         return;
                     }
+                    const isContinuation = routeIndex > 0;
 
                     stops.push({
                         station: stop.StopName,
                         stopId: stop.StopId,
+                        isContinuation,
                         isNAD: false,
                         isPassing: false,
                         arr: isFirst && routeIndex === 0 ? null : arrBlock,

@@ -57,6 +57,8 @@ const providers = [
     new DpmpProvider(),
     new DpmlbProvider(),
     new DpmlbProvider('DPMJ', 'dpmj'),
+    new DpmlbProvider('Kladno', 'kladno'),
+    new DpmlbProvider('ArrivaEX', 'arrivaex'),
     new TsmkProvider(),
     new DszoProvider(),
     new PortaboProvider('DPMÚL', 'dpmul', true),
@@ -120,6 +122,8 @@ function getProviderColor(provider) {
     if (provider === 'DPMP') return '#ff8080';
     if (provider === 'DPMLB') return '#ff8080';
     if (provider === 'DPMJ') return '#ff8080';
+    if (provider === 'Kladno') return '#ff8080';
+    if (provider === 'ArrivaEX') return '#00b2a9';
     if (provider === 'TSMK') return '#ff8080';
     if (provider === 'DSZO') return '#ff8080';
     if (provider === 'DPMÚL') return '#ff8080';
@@ -672,7 +676,8 @@ async function switchToTimetable(isSilent = false) {
             };
 
             const nadHtml = stop.isNAD ? `<span class="nad-badge" title="Náhradní doprava v tomto úseku">NAD</span>` : '';
-            const isCurrentStop = (stop.station.trim() === d.stop.trim());
+            // Navazující spoje (stop.isContinuation) aktuální zastávku nikdy nezvýrazňují
+            const isCurrentStop = !stop.isContinuation && !stop.isSeparator && stop.station.trim() === d.stop.trim();
             const rowId = isCurrentStop ? 'id="current-stop-row"' : '';
             
             let stationStyle = '';
@@ -1058,6 +1063,8 @@ function renderVehicles() {
                     'DPMP': 2040,
                     'DPMLB': 2030,
                     'DPMJ': 2025,
+                    'Kladno': 2022,
+                    'ArrivaEX': 3000,
                     'TSMK': 2020,
                     'DSZO': 2010,
                     'DPMÚL': 2000,
