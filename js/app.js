@@ -65,6 +65,7 @@ const providers = [
     new DpmlbProvider('MHD Ústí n.O.', 'scheduled/705100', { estimated: true, carrier: 'ČSAD Ústí nad Orlicí' }),
     new DpmlbProvider('MHD Jičín', 'scheduled/635007', { estimated: true, carrier: 'Fejfar Bus' }),
     new DpmlbProvider('MHD Tachov', 'scheduled/495712', { estimated: true, carrier: 'Autobusy VKJ' }),
+    new DpmlbProvider('MHD Špindlerův Mlýn', 'scheduled/696002', { estimated: true, carrier: 'Služby města Špindlerův Mlýn' }),
     new TsmkProvider(),
     new DszoProvider(),
     new PortaboProvider('DPMÚL', 'dpmul', true),
@@ -131,7 +132,7 @@ function getProviderColor(provider) {
     if (provider === 'Kladno') return '#ff8080';
     if (provider === 'ArrivaEX') return '#00b2a9';
     if (provider === 'DPKV') return '#ff8080';
-    if (provider === 'MHD Ústí n.O.' || provider === 'MHD Jičín' || provider === 'MHD Tachov') return '#a4c400';
+    if (provider === 'MHD Ústí n.O.' || provider === 'MHD Jičín' || provider === 'MHD Tachov' || provider === 'MHD Špindlerův Mlýn') return '#a4c400';
     if (provider === 'TSMK') return '#ff8080';
     if (provider === 'DSZO') return '#ff8080';
     if (provider === 'DPMÚL') return '#ff8080';
@@ -1077,6 +1078,7 @@ function renderVehicles() {
                     'MHD Ústí n.O.': 1500,
                     'MHD Jičín': 1500,
                     'MHD Tachov': 1500,
+                    'MHD Špindlerův Mlýn': 1500,
                     'TSMK': 2020,
                     'DSZO': 2010,
                     'DPMÚL': 2000,
