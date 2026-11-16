@@ -131,34 +131,59 @@ export default class IdsJmkProvider extends BaseProvider {
                 return `${h.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')}`;
             };
 
-            const rawStops = data.Routes[0].Stops;
-            
-            // ODSTRANĚNÍ NEVIDITELNÝCH TECHNICKÝCH BODŮ (Waypointů na dálnici atd.)
-            const visibleStops = rawStops.filter(s => s.IsVisible === true);
-            
-            visibleStops.forEach((stop, index) => {
-                const pArr = formatTime(stop.ArrivalTime);
-                const pDep = formatTime(stop.Time);
-                const aArr = formatTime(stop.ArrivalTime + delayMins);
-                const aDep = formatTime(stop.Time + delayMins);
+            // Aktuální spoj a za ním navazující spoje téhož vozidla: dokud má předchozí spoj
+            // ContinuesWithPassengers, vůz pokračuje s cestujícími dalším spojem z odpovědi
+            const routes = data.Routes;
+            let startIndex = routes.findIndex(r => r.IsCurrentRoute);
+            if (startIndex < 0) startIndex = 0;
+            const chain = [routes[startIndex]];
+            for (let i = startIndex + 1; i < routes.length && chain[chain.length - 1].ContinuesWithPassengers; i++) {
+                chain.push(routes[i]);
+            }
 
-                let arrival = null;
-                let departure = null;
+            const isLastRoute = (routeIndex) => routeIndex === chain.length - 1;
+            chain.forEach((route, routeIndex) => {
+                // ODSTRANĚNÍ NEVIDITELNÝCH TECHNICKÝCH BODŮ (Waypointů na dálnici atd.)
+                const visibleStops = (route.Stops || []).filter(s => s.IsVisible === true);
 
-                const arrBlock = { planned: pArr, actual: aArr, color: color };
-                const depBlock = { planned: pDep, actual: aDep, color: color };
+                visibleStops.forEach((stop, index) => {
+                    const arrBlock = { planned: formatTime(stop.ArrivalTime), actual: formatTime(stop.ArrivalTime + delayMins), color };
+                    const depBlock = { planned: formatTime(stop.Time), actual: formatTime(stop.Time + delayMins), color };
+                    const isFirst = index === 0;
+                    const isLast = index === visibleStops.length - 1;
 
-                if (index === 0) departure = depBlock;
-                else if (index === visibleStops.length - 1) arrival = arrBlock;
-                else { arrival = arrBlock; departure = depBlock; }
+                    // Přestupní zastávka mezi spoji: jeden řádek s příjezdem z předchozího
+                    // a odjezdem z navazujícího spoje
+                    // (poslední řádek je oddělovač, zastávka je hned před ním)
+                    const previous = stops[stops.length - 2];
+                    if (isFirst && routeIndex > 0 && previous && previous.stopId === stop.StopId) {
+                        previous.dep = depBlock;
+                        return;
+                    }
 
-                stops.push({
-                    station: stop.StopName,
-                    isNAD: false,
-                    isPassing: false,
-                    arr: arrival,
-                    dep: departure
+                    stops.push({
+                        station: stop.StopName,
+                        stopId: stop.StopId,
+                        isNAD: false,
+                        isPassing: false,
+                        arr: isFirst && routeIndex === 0 ? null : arrBlock,
+                        dep: isLast ? null : depBlock
+                    });
                 });
+
+                // Oddělovač před navazujícím spojem
+                if (!isLastRoute(routeIndex)) {
+                    const next = chain[routeIndex + 1];
+                    const sameLine = next.LineId === attributes.LineID && attributes.LineName;
+                    stops.push({
+                        station: sameLine ? `↳ pokračuje dalším spojem linky ${attributes.LineName}` : '↳ pokračuje dalším spojem',
+                        isSeparator: true,
+                        isNAD: false,
+                        isPassing: true,
+                        arr: null,
+                        dep: null
+                    });
+                }
             });
 
             return stops;
