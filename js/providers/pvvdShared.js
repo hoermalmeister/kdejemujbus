@@ -60,6 +60,16 @@ function addMinutes(time, minutes) {
     return `${String(Math.floor(total / 60)).padStart(2, '0')}:${String(total % 60).padStart(2, '0')}`;
 }
 
+// Příjezd uvedený v buňce se zastávkou („Jamné příjezd 12:54"), když se liší od odjezdu.
+// Vrátí { name, arr } – název bez poznámky a čas příjezdu (nebo null).
+const ARRIVAL_IN_NAME = /\s*(?:p\u0159\u00edjezd|prijezd|arrival|arr\.?|p\u0159\.)\s*:?\s*(\d{1,2}:\d{2})\s*/i;
+function splitStationCell(cell) {
+    const text = cell.textContent.replace(/\s+/g, ' ').trim();
+    const match = ARRIVAL_IN_NAME.exec(text);
+    if (!match) return { name: text, arr: null };
+    return { name: text.replace(match[0], ' ').replace(/\s+/g, ' ').trim(), arr: match[1].padStart(5, '0') };
+}
+
 function cleanTime(cell) {
     const text = cell ? cell.textContent.trim() : '';
     return /^\d{1,2}:\d{2}/.test(text) ? text.slice(0, 5).padStart(5, '0') : null;
@@ -73,10 +83,13 @@ export function parsePvvdTimetable(html, delayMins, activeColor) {
             const cells = row.querySelectorAll('td');
             if (cells.length < 2) return null;
             const style = row.getAttribute('style') || '';
+            const station = splitStationCell(cells[0]);
             return {
-                station: cells[0].textContent.trim(),
-                // dva sloupce = jeden čas (plán), tři sloupce = příjezd a odjezd
+                station: station.name,
+                // dva sloupce = jeden čas (odjezd, případný příjezd je v buňce se zastávkou),
+                // tři sloupce = příjezd a odjezd
                 arr: cells.length >= 3 ? cleanTime(cells[1]) : null,
+                arrInName: station.arr,
                 dep: cleanTime(cells.length >= 3 ? cells[2] : cells[1]),
                 isPast: row.classList.contains('is-past'),
                 isCurrent: row.classList.contains('is-current') || row.hasAttribute('aria-current')
@@ -99,7 +112,11 @@ export function parsePvvdTimetable(html, delayMins, activeColor) {
         } : null;
 
         let arr = null, dep = null;
-        if (row.arr) {
+        if (row.arrInName) {
+            // zastávka s delším pobytem: příjezd z poznámky, odjezd ze sloupce s časem
+            arr = block(row.arrInName);
+            dep = index === lastIndex ? null : block(row.dep);
+        } else if (row.arr) {
             // starší podoba se dvěma časy
             arr = index === 0 ? null : block(row.arr);
             dep = index === lastIndex ? null : block(row.dep);
