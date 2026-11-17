@@ -80,7 +80,9 @@ export default class IdsJmkProvider extends BaseProvider {
             else stop = 'Čeká na výchozí zastávce';
         }
 
-        return { route, destination, stop, delay, carrier: 'IDS JMK', isNAD: false };
+        // Šestimístnou linku CIS JŘ dohledává můstek (RouteID je číslo spoje)
+        const timetableRoute = attributes.FullLine && routeId ? `${attributes.FullLine}/${routeId}` : route;
+        return { route, timetableRoute, destination, stop, delay, carrier: 'IDS JMK', isNAD: false };
     }
 
     async getRouteInfo(globalId, attributes) {
@@ -211,7 +213,8 @@ export default class IdsJmkProvider extends BaseProvider {
                 heading: heading,
                 route: trip.LineName || '?',
                 headsign: trip.FinalStopName || 'Neznámý cíl',
-                globalMatchId: `idsjmk_${trip.LineName}_${trip.RouteID}`, 
+                // Se šestimístnou linkou se spoj spáruje se stejným spojem z jiných zdrojů
+                globalMatchId: trip.FullLine ? `${trip.FullLine}_${trip.RouteID}` : `idsjmk_${trip.LineName}_${trip.RouteID}`,
                 delay: trip.Delay || 0,
                 attributes: { ...trip } 
             });

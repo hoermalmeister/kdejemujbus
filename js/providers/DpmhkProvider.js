@@ -37,7 +37,8 @@ export default class DpmhkProvider extends BaseProvider {
                 heading: item.heading,
                 route: String(item.line),
                 headsign: item.destination || 'Neznámý cíl',
-                globalMatchId: `dpmhk_${item.vehicle}`,
+                // Šestimístnou linku (615xxx) a spoj dopočítává můstek; bez nich se vůz nepáruje
+                globalMatchId: item.fullLine && item.run ? `${item.fullLine}_${item.run}` : `dpmhk_${item.vehicle}`,
                 delay: `${item.delay || 0} min`,
                 attributes: { ...item }
             }));
@@ -47,8 +48,8 @@ export default class DpmhkProvider extends BaseProvider {
         if (!attributes) return null;
         const delay = attributes.delay || 0;
         return {
-            route: String(attributes.line),
-            timetableRoute: String(attributes.line),
+            route: attributes.run ? `${attributes.line}/${attributes.run}` : String(attributes.line),
+            timetableRoute: attributes.fullLine && attributes.run ? `${attributes.fullLine}/${attributes.run}` : String(attributes.line),
             destination: attributes.destination || 'Neznámý cíl',
             stop: attributes.stop || 'Na trase...',
             delay: `${delay} min`,

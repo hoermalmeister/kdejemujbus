@@ -64,10 +64,15 @@ export default class MpvProvider extends BaseProvider {
             const rawShortLine = fields[CN.shortLine] || line;
             const shortLine = /^\d{6}$/.test(rawShortLine) ? rawShortLine.slice(-3) : rawShortLine;
 
+            // DPO (MHD Ostrava) má v ODISu jen krátké číslo linky a vlastní číslo spoje;
+            // šestimístnou linku (915xxx) a spoj CIS JŘ dopočítává můstek (cisLine, cisRun)
+            const fullLine = /^\d{6}$/.test(line) ? line : (item.cisLine && item.cisRun ? item.cisLine : null);
+            const cisRun = /^\d{6}$/.test(line) ? run : (fullLine ? String(item.cisRun) : null);
+
             // "a_270.png" je azimut, "a_stoji.png" stojící vozidlo
             const angle = /^a_(\d+)\./.exec(item.ico || '');
             // Šestimístné linky jsou celostátní, linky MHD se mezi městy opakují
-            const matchId = /^\d{6}$/.test(line) ? `${line}_${run}` : `${this.providerName}_${line}_${run}`;
+            const matchId = fullLine ? `${fullLine}_${cisRun}` : `${this.providerName}_${line}_${run}`;
 
             vehicles.push({
                 id: `${this.providerName}_${line}_${run}`,
@@ -85,6 +90,8 @@ export default class MpvProvider extends BaseProvider {
                     isExternal: Boolean(item.external),
                     delayMinutes: item.dm || 0,
                     line,
+                    fullLine,
+                    cisRun,
                     run,
                     shortLine,
                     lastStop: fields[CN.lastStop] || '',
@@ -101,11 +108,11 @@ export default class MpvProvider extends BaseProvider {
 
     async getDetails(globalId, attributes) {
         if (!attributes) return null;
-        const { shortLine, line, run, lastStop, destination, delayMinutes, carrier } = attributes;
+        const { shortLine, line, fullLine, cisRun, run, lastStop, destination, delayMinutes, carrier } = attributes;
         const atDestination = lastStop !== '' && lastStop === destination;
         return {
             route: `${shortLine}/${run}`,
-            timetableRoute: `${line}/${run}`,
+            timetableRoute: fullLine ? `${fullLine}/${cisRun}` : `${line}/${run}`,
             destination,
             stop: lastStop || 'Na trase...',
             delay: atDestination ? 'V cíli' : `${delayMinutes} min`,

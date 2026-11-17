@@ -1,4 +1,5 @@
 import BaseProvider from './BaseProvider.js';
+import { getGtfsRoute } from './gtfsRoutes.js';
 
 const BRIDGE_URL = 'https://grapp-bridge-production.up.railway.app/dszo';
 const IDZK_ROUTE_URL = 'https://grapp-bridge-production.up.railway.app/mpv/zlin/route';
@@ -39,8 +40,8 @@ export default class DszoProvider extends BaseProvider {
                 heading: item.heading,
                 route: String(item.line),
                 headsign: item.destination || 'Neznámý cíl',
-                // Zdroj nemá číslo spoje, vozy se s ostatními zdroji nepárují
-                globalMatchId: `dszo_${item.vehicle}`,
+                // Šestimístnou linku (825xxx/826xxx) a spoj CIS JŘ dopočítává můstek
+                globalMatchId: item.fullLine && item.run ? `${item.fullLine}_${item.run}` : `dszo_${item.vehicle}`,
                 delay: `${item.delay || 0} min`,
                 attributes: { ...item }
             }));
@@ -69,8 +70,8 @@ export default class DszoProvider extends BaseProvider {
         if (!attributes) return null;
         const delay = attributes.delay || 0;
         return {
-            route: attributes.spoj ? `${attributes.line}/${attributes.spoj}` : String(attributes.line),
-            timetableRoute: String(attributes.line),
+            route: attributes.run ? `${attributes.line}/${attributes.run}` : String(attributes.line),
+            timetableRoute: attributes.fullLine && attributes.run ? `${attributes.fullLine}/${attributes.run}` : String(attributes.line),
             destination: attributes.destination || 'Neznámý cíl',
             stop: attributes.stop || 'Na trase...',
             delay: `${delay} min`,
@@ -83,10 +84,11 @@ export default class DszoProvider extends BaseProvider {
         };
     }
 
-    // Trasu spoje nemá DSZO, ale IDZK ano (spárováno podle čísla vozu v bridge)
+    // Trasu spoje nemá DSZO, ale IDZK ano (spárováno podle čísla vozu v bridge);
+    // jinak trasa z GTFS podle dopočteného spoje
     async getRouteInfo(id, attributes) {
         const trip = attributes?.idzk;
-        if (!trip) return null;
+        if (!trip) return attributes?.fullLine && attributes?.run ? getGtfsRoute(`${attributes.fullLine}/${attributes.run}`) : null;
         try {
             const query = new URLSearchParams({ num1: trip.line, num2: trip.run, cat: trip.cat }).toString();
             const response = await fetch(`${IDZK_ROUTE_URL}?${query}`);

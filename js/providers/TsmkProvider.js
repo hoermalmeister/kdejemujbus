@@ -44,11 +44,15 @@ export default class TsmkProvider extends BaseProvider {
                 heading: item.heading,
                 route: String(item.line),
                 headsign: item.destination || 'Neznámý cíl',
-                // Kroměříž se s ostatními zdroji nepřekrývá, spoj proto neslučujeme
-                globalMatchId: `tsmk_${item.vehicle}`,
+                // Linky TSMK jsou 77500X, číslo spoje ze zdroje je spoj CIS JŘ
+                globalMatchId: this.fullLine(item) && item.run != null ? `${this.fullLine(item)}_${item.run}` : `tsmk_${item.vehicle}`,
                 delay: `${item.delay || 0} min`,
                 attributes: { ...item }
             }));
+    }
+
+    fullLine(item) {
+        return /^\d{1,3}$/.test(String(item?.line ?? '')) ? `775${String(item.line).padStart(3, '0')}` : null;
     }
 
     // Trasa a zastávky spoje se během jízdy nemění
@@ -73,7 +77,7 @@ export default class TsmkProvider extends BaseProvider {
         const delay = attributes.delay || 0;
         return {
             route: attributes.run != null ? `${attributes.line}/${attributes.run}` : String(attributes.line),
-            timetableRoute: attributes.run != null ? `${attributes.line}/${attributes.run}` : String(attributes.line),
+            timetableRoute: attributes.run != null && this.fullLine(attributes) ? `${this.fullLine(attributes)}/${attributes.run}` : String(attributes.line),
             destination: attributes.destination || 'Neznámý cíl',
             stop: attributes.stop || 'Na trase...',
             delay: `${delay} min`,
