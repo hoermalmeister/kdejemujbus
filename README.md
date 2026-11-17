@@ -76,7 +76,6 @@ Kadaň
 Duchcov  
 
 ## Notes to myself  
-Filtrování zobrazených regionů  
 Dopravci JMK, VDV, IDPK  
 Chybná čísla spojů MHD Praha  
 Transfer návaznosti  

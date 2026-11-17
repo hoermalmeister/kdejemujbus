@@ -11,8 +11,52 @@
 #locate-btn:hover { background: rgba(40, 40, 40, 0.9); }
 #locate-btn:active { transform: scale(0.95); }
 
+/* --- TLAČÍTKA RESET / FILTR / INFO --- */
+.map-btn {
+    position: absolute; right: 20px; z-index: 1000;
+    background: rgba(20, 20, 20, 0.85); backdrop-filter: blur(8px);
+    color: #ddd; border: 1px solid rgba(255,255,255,0.15);
+    border-radius: 50%; width: 44px; height: 44px; padding: 0; cursor: pointer;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.5); display: flex;
+    align-items: center; justify-content: center; transition: background 0.2s ease;
+    -webkit-tap-highlight-color: transparent; box-sizing: content-box;
+}
+.map-btn:hover { background: rgba(40, 40, 40, 0.9); }
+.map-btn:active { transform: scale(0.95); }
+#reload-btn { top: 74px; }
+#reload-btn.spinning svg { animation: reloadSpin 0.8s linear infinite; }
+@keyframes reloadSpin { to { transform: rotate(360deg); } }
+#filter-btn { top: 128px; }
+#filter-btn.filtered { color: #58d68d; }
+#filter-btn.filtered::after {
+    content: ''; position: absolute; top: 7px; right: 7px; width: 8px; height: 8px;
+    border-radius: 50%; background: #f39c12; border: 1px solid #141414;
+}
+#info-btn {
+    top: auto; bottom: 20px; width: 32px; height: 32px; text-decoration: none;
+    font: bold italic 18px Georgia, 'Times New Roman', serif; color: #ddd;
+}
+
+#region-menu {
+    position: absolute; top: 128px; right: 74px; z-index: 1001; min-width: 210px;
+    max-height: calc(100vh - 150px); overflow-y: auto;
+    background: rgba(30, 30, 30, 0.96); backdrop-filter: blur(8px);
+    border: 1px solid rgba(255,255,255,0.15); border-radius: 8px;
+    box-shadow: 0 10px 30px rgba(0,0,0,0.6); color: #eee;
+    font-family: 'Open Sans', Arial, sans-serif; font-size: 14px; padding: 6px 0;
+}
+#region-menu[hidden] { display: none; }
+#region-menu .region-title { padding: 6px 14px 8px; font-weight: bold; color: #fff; }
+#region-menu label {
+    display: flex; align-items: center; gap: 10px; padding: 8px 14px; cursor: pointer;
+    user-select: none; -webkit-tap-highlight-color: transparent;
+}
+#region-menu label:hover { background: rgba(255,255,255,0.06); }
+#region-menu label.region-all { border-bottom: 1px solid #333; margin-bottom: 4px; font-weight: bold; }
+#region-menu input[type="checkbox"] { width: 18px; height: 18px; margin: 0; accent-color: #58d68d; cursor: pointer; }
+
 #compass-btn {
-    position: absolute; top: 74px; right: 20px; z-index: 1000; /* Odsazeno pod tlačítko lokace */
+    position: absolute; top: 182px; right: 20px; z-index: 1000; /* Odsazeno pod tlačítka poloha / reset / filtr */
     background: rgba(20, 20, 20, 0.85); backdrop-filter: blur(8px); border: 1px solid rgba(255,255,255,0.15); border-radius: 50%; width: 44px; height: 44px; cursor: pointer; box-shadow: 0 4px 12px rgba(0,0,0,0.5); display: none; align-items: center; justify-content: center; transition: opacity 0.2s ease;
 }
 #compass-btn:hover { background: rgba(40, 40, 40, 0.9); }

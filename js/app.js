@@ -18,6 +18,7 @@ import DszoProvider from './providers/DszoProvider.js';
 import PortaboProvider from './providers/PortaboProvider.js';
 import DpmhkProvider from './providers/DpmhkProvider.js';
 import GepardProvider from './providers/GepardProvider.js';
+import { REGIONS, loadHiddenRegions, saveHiddenRegions } from './regions.js';
 
 // --- OCHRANA PROTI PŘIBLÍŽENÍ CELÉ STRÁNKY NA TELEFONU ---
 // Mapa si gesta řeší sama. Pokud je hlavní vlákno zaneprázdněné, Safari může gesto
@@ -799,6 +800,36 @@ const STALE_PROVIDER_MS = 120000; // Tak dlouho držíme poslední polohy zdroje
 const MIN_RENDER_GAP_MS = 1000;
 
 const providerStates = new Map(providers.map(p => [p, { vehicles: [], receivedAt: 0, inFlight: false }]));
+
+// --- FILTR OBLASTÍ ---
+// Zdroj ve skryté oblasti se nestahuje ani nekreslí. Výjimka: odkaz na konkrétní vozidlo
+// (?id=…) – dokud ho nenajdeme (nejvýš minutu), stahují se všechny zdroje.
+const providerRegion = new Map();
+REGIONS.forEach(region => region.providers.forEach(name => providerRegion.set(name, region.id)));
+let hiddenRegions = loadHiddenRegions();
+const targetSearchUntil = targetVehicleId ? Date.now() + 60000 : 0;
+
+function isProviderActive(provider) {
+    const region = providerRegion.get(provider.providerName);
+    if (!region || !hiddenRegions.has(region)) return true;
+    return Boolean(targetVehicleId) && !initialClickDone && Date.now() < targetSearchUntil;
+}
+
+function applyRegionFilter() {
+    for (const [provider, state] of providerStates) {
+        if (!isProviderActive(provider)) {
+            state.vehicles = [];
+            state.receivedAt = 0;
+        } else if (state.receivedAt === 0) {
+            refreshProvider(provider);
+        }
+    }
+    if (activeTrainData.props && detailPanel.classList.contains('open')) {
+        const openProvider = providers.find(p => p.providerName === activeTrainData.props.provider);
+        if (openProvider && !isProviderActive(openProvider)) closeDetailPanel();
+    }
+    scheduleRender();
+}
 const vehicleIndex = new Map();
 let lastRefreshAt = 0;
 let lastRenderAt = 0;
@@ -818,7 +849,7 @@ function hydrateProps(featureProps) {
 
 function refreshAll() {
     lastRefreshAt = Date.now();
-    providers.forEach(refreshProvider);
+    providers.filter(isProviderActive).forEach(refreshProvider);
     updateStatus();
     if (isUserLocationActive) updateUserLocation(false);
 }
@@ -830,8 +861,12 @@ async function refreshProvider(provider) {
 
     try {
         const vehicles = await provider.fetchData();
+        // Oblast mezitím někdo skryl
+        if (!isProviderActive(provider)) {
+            state.vehicles = [];
+            state.receivedAt = 0;
         // Prázdný výsledek často znamená výpadek, proto vozidla nezmizí hned
-        if (vehicles.length > 0 || Date.now() - state.receivedAt > STALE_PROVIDER_MS) {
+        } else if (vehicles.length > 0 || Date.now() - state.receivedAt > STALE_PROVIDER_MS) {
             state.vehicles = vehicles;
             state.receivedAt = Date.now();
         }
@@ -873,7 +908,8 @@ function updateStatus() {
 
 function collectVehicles() {
     const allVehicles = [];
-    for (const state of providerStates.values()) {
+    for (const [provider, state] of providerStates) {
+        if (!isProviderActive(provider)) continue;
         for (const v of state.vehicles) {
             v._isJmkTwin = false;
             allVehicles.push(v);
@@ -1117,6 +1153,8 @@ function renderVehicles() {
 
         if (target) {
             initialClickDone = true;
+            // Hledání sdíleného vozidla skončilo, skryté oblasti se zase přestanou stahovat
+            if (hiddenRegions.size) setTimeout(applyRegionFilter, 0);
             openVehicleDetail(hydrateProps({ key: vehicleKey(target) }));
         }
     }
@@ -1181,3 +1219,110 @@ function updateCompass() {
 }
 map.on('rotate', updateCompass); 
 map.on('move', updateCompass);
+
+// --- TVRDÝ RESET STRÁNKY (jako Ctrl+F5, funguje i na telefonu) ---
+// Smaže případné service workery a Cache Storage, znovu stáhne všechny soubory webu
+// mimo HTTP mezipaměť (cache: 'reload' ji zároveň přepíše) a pak stránku načte znovu.
+const reloadBtn = document.getElementById('reload-btn');
+
+async function hardReload() {
+    reloadBtn?.classList.add('spinning');
+    try {
+        if ('serviceWorker' in navigator) {
+            const registrations = await navigator.serviceWorker.getRegistrations();
+            await Promise.all(registrations.map(r => r.unregister()));
+        }
+        if (window.caches) {
+            const keys = await caches.keys();
+            await Promise.all(keys.map(key => caches.delete(key)));
+        }
+        const urls = new Set([location.href.split('#')[0], new URL('./', location.href).href]);
+        for (const entry of performance.getEntriesByType('resource')) {
+            try {
+                const url = new URL(entry.name);
+                if (url.origin === location.origin) urls.add(url.href);
+            } catch { /* neplatná adresa */ }
+        }
+        const refetch = Promise.allSettled([...urls].map(url => fetch(url, { cache: 'reload' })));
+        await Promise.race([refetch, new Promise(resolve => setTimeout(resolve, 6000))]);
+    } catch (err) {
+        console.warn('Tvrdý reset: mezipaměť se nepodařilo vyčistit celou.', err);
+    }
+    location.reload();
+}
+
+reloadBtn?.addEventListener('click', hardReload);
+
+// --- MENU OBLASTÍ ---
+const filterBtn = document.getElementById('filter-btn');
+const regionMenu = document.getElementById('region-menu');
+
+function updateFilterButton() {
+    filterBtn?.classList.toggle('filtered', hiddenRegions.size > 0);
+}
+
+function syncRegionMenu() {
+    if (!regionMenu) return;
+    regionMenu.querySelectorAll('input[data-region]').forEach(input => {
+        input.checked = !hiddenRegions.has(input.dataset.region);
+    });
+    const allInput = regionMenu.querySelector('input[data-all]');
+    if (allInput) {
+        allInput.checked = hiddenRegions.size === 0;
+        allInput.indeterminate = hiddenRegions.size > 0 && hiddenRegions.size < REGIONS.length;
+    }
+}
+
+function setHiddenRegions(next) {
+    hiddenRegions = next;
+    saveHiddenRegions(hiddenRegions);
+    syncRegionMenu();
+    updateFilterButton();
+    applyRegionFilter();
+}
+
+function buildRegionMenu() {
+    if (!regionMenu) return;
+    const title = document.createElement('div');
+    title.className = 'region-title';
+    title.textContent = 'Zobrazené oblasti';
+    regionMenu.appendChild(title);
+
+    const makeRow = (text, attrs, onChange, extraClass) => {
+        const label = document.createElement('label');
+        if (extraClass) label.className = extraClass;
+        const input = document.createElement('input');
+        input.type = 'checkbox';
+        Object.entries(attrs).forEach(([key, value]) => { input.dataset[key] = value; });
+        input.addEventListener('change', () => onChange(input.checked));
+        label.append(input, document.createTextNode(text));
+        regionMenu.appendChild(label);
+    };
+
+    makeRow('Všechny oblasti', { all: '1' },
+        (checked) => setHiddenRegions(checked ? new Set() : new Set(REGIONS.map(r => r.id))), 'region-all');
+    REGIONS.forEach(region => makeRow(region.name, { region: region.id }, (checked) => {
+        const next = new Set(hiddenRegions);
+        if (checked) next.delete(region.id); else next.add(region.id);
+        setHiddenRegions(next);
+    }));
+    syncRegionMenu();
+}
+
+function setRegionMenuOpen(open) {
+    if (!regionMenu) return;
+    regionMenu.hidden = !open;
+    filterBtn?.setAttribute('aria-expanded', String(open));
+}
+
+buildRegionMenu();
+updateFilterButton();
+filterBtn?.addEventListener('click', (e) => {
+    e.stopPropagation();
+    setRegionMenuOpen(regionMenu.hidden);
+});
+// Klik mimo menu nebo Escape menu zavře
+document.addEventListener('pointerdown', (e) => {
+    if (regionMenu && !regionMenu.hidden && !regionMenu.contains(e.target) && !filterBtn.contains(e.target)) setRegionMenuOpen(false);
+});
+document.addEventListener('keydown', (e) => { if (e.key === 'Escape') setRegionMenuOpen(false); });
